@@ -88,12 +88,13 @@ def seed_products(cur):
             skipped += 1
             continue
         pid = uid()
+        is_perish = (storage == 'refrigerated')
         cur.execute("""
             INSERT INTO products
               (id, name, brand, sku, barcode, barcode_type, category,
-               description, default_storage_type, is_active, created_at, updated_at)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,TRUE,NOW(),NOW())
-        """, (pid, name, brand, sku, barcode, btype, cat, desc, storage))
+               description, default_storage_type, currency, is_active, is_perishable, created_at, updated_at)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'INR',TRUE,%s,NOW(),NOW())
+        """, (pid, name, brand, sku, barcode, btype, cat, desc, storage, is_perish))
         ids.append((pid, barcode, cat, storage))
         inserted += 1
     print(f"  products        inserted={inserted}  skipped={skipped}")
