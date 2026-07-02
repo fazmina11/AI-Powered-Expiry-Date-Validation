@@ -22,6 +22,7 @@ from app.models import (  # noqa: F401
     ExternalProductEnrichmentLog, StorageContext, MLPrediction,
 )
 from app.routes.auth import router as auth_router
+from app.routes.api import router as api_router
 
 
 @asynccontextmanager
@@ -49,6 +50,7 @@ app.add_middleware(
 
 # Register routers
 app.include_router(auth_router)
+app.include_router(api_router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["health"])
