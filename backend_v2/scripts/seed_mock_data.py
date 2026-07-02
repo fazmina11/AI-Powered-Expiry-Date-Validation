@@ -355,10 +355,11 @@ def seed_manual_reviews(cur, inv_ids):
             INSERT INTO manual_reviews
               (id, inventory_item_id, reviewer_id, reviewer_role,
                corrected_expiry_date, human_decision, review_notes,
-               escalation_reason, review_status, reviewed_at,
+               escalation_reason, review_status, review_type, reviewed_at,
                created_at, updated_at)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,
                     CASE WHEN %s < 5 THEN 'completed' ELSE 'pending' END,
+                    'OCR_CORRECTION',
                     CASE WHEN %s < 5 THEN NOW() ELSE NULL END,
                     NOW(),NOW())
             ON CONFLICT DO NOTHING
