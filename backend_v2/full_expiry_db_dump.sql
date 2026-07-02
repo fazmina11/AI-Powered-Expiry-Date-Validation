@@ -1,0 +1,1566 @@
+﻿--
+-- PostgreSQL database dump
+--
+
+\restrict AIkV6BQHaLBP5Yq1e1inc9ulpP5MgUpv5CRH7wt3olhMIUbw1cwPEAgunt71rfp
+
+-- Dumped from database version 16.14
+-- Dumped by pg_dump version 16.14
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- Name: pgcrypto; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
+
+
+--
+-- Name: EXTENSION pgcrypto; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
+
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- Name: audit_logs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.audit_logs (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    event_type character varying(100) NOT NULL,
+    entity_type character varying(100),
+    entity_id character varying(100),
+    action character varying(100),
+    message text,
+    metadata_json jsonb,
+    actor_id character varying(200),
+    actor_name character varying(150),
+    actor_type character varying(50),
+    before_state json,
+    after_state json,
+    change_summary text,
+    ip_address character varying(50),
+    user_agent character varying(500),
+    request_id character varying(100),
+    occurred_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: barcode_scans; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.barcode_scans (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    product_id uuid,
+    scan_session_id uuid,
+    raw_barcode character varying(255) NOT NULL,
+    barcode_type character varying(20),
+    scan_source character varying(100),
+    scan_status character varying(20) DEFAULT 'unresolved'::character varying NOT NULL,
+    notes text,
+    scanned_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: external_product_enrichment_logs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.external_product_enrichment_logs (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    product_id uuid,
+    barcode_value character varying(150) NOT NULL,
+    provider character varying(100) NOT NULL,
+    request_url text,
+    response_status character varying(50) NOT NULL,
+    response_json jsonb,
+    error_message text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: inventory_items; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.inventory_items (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    product_id uuid NOT NULL,
+    barcode_scan_id uuid,
+    scan_session_id uuid,
+    ocr_result_id uuid,
+    supplier_id uuid,
+    warehouse_id uuid,
+    storage_location_id uuid,
+    batch_number character varying(100),
+    manufacturing_date date,
+    expiry_date date,
+    packed_date date,
+    pipeline_status character varying(30) DEFAULT 'PENDING_OCR'::character varying NOT NULL,
+    status_reason text,
+    intake_source character varying(50) DEFAULT 'OCR_SCAN'::character varying NOT NULL,
+    intake_status character varying(50) DEFAULT 'DATA_INCOMPLETE'::character varying NOT NULL,
+    operator_decision character varying(100),
+    quantity integer DEFAULT 1,
+    unit character varying(20),
+    intake_notes text,
+    notes text,
+    intake_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: inventory_movements; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.inventory_movements (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    inventory_item_id uuid NOT NULL,
+    from_location_id uuid,
+    to_location_id uuid,
+    movement_type character varying(50) NOT NULL,
+    quantity integer NOT NULL,
+    reason text,
+    moved_by character varying(100),
+    moved_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: manual_reviews; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.manual_reviews (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    scan_session_id uuid,
+    inventory_item_id uuid,
+    ocr_result_id uuid,
+    review_type character varying(50) DEFAULT 'OCR_CORRECTION'::character varying NOT NULL,
+    original_mfg_date date,
+    original_expiry_date date,
+    corrected_mfg_date date,
+    corrected_expiry_date date,
+    corrected_batch_number character varying(100),
+    corrected_description text,
+    reviewer_id character varying(200),
+    reviewer_name character varying(150),
+    reviewer_role character varying(100),
+    reviewer_note text,
+    human_decision character varying(30),
+    review_notes text,
+    escalation_reason text,
+    review_status character varying(20) DEFAULT 'PENDING'::character varying NOT NULL,
+    reviewed_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: ml_predictions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ml_predictions (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    inventory_item_id uuid NOT NULL,
+    model_name character varying(200),
+    model_version character varying(50),
+    predicted_mfg_date date,
+    predicted_expiry_date date,
+    predicted_remaining_days integer,
+    predicted_decision character varying(30),
+    decision_confidence double precision,
+    decision_reason text,
+    raw_prediction_payload text,
+    prediction_status character varying(20) DEFAULT 'pending'::character varying NOT NULL,
+    failure_reason text,
+    predicted_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: ocr_results; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ocr_results (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    product_image_id uuid NOT NULL,
+    product_id uuid,
+    scan_session_id uuid,
+    inventory_item_id uuid,
+    raw_text text,
+    ocr_engine character varying(100),
+    ocr_engine_version character varying(50),
+    extracted_text_blocks json,
+    overall_confidence double precision,
+    ocr_confidence numeric(5,4),
+    extracted_product_name character varying(255),
+    extracted_brand character varying(150),
+    extracted_description text,
+    extracted_ingredients_text text,
+    extracted_nutrition_text text,
+    candidate_mfg_date date,
+    candidate_expiry_date date,
+    candidate_packed_date date,
+    best_before_text character varying(255),
+    batch_number_detected character varying(100),
+    mrp_detected numeric(10,2),
+    date_parse_confidence numeric(5,4),
+    response_json jsonb,
+    ocr_status character varying(30) DEFAULT 'PENDING'::character varying NOT NULL,
+    failure_reason text,
+    processed_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: product_allergens; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.product_allergens (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    product_id uuid NOT NULL,
+    allergen_name character varying(150) NOT NULL,
+    allergen_type character varying(100),
+    contains boolean NOT NULL,
+    may_contain boolean NOT NULL,
+    source_text text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: product_identifiers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.product_identifiers (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    product_id uuid NOT NULL,
+    identifier_value character varying(150) NOT NULL,
+    identifier_type character varying(50) NOT NULL,
+    is_primary boolean NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: product_images; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.product_images (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    product_id uuid NOT NULL,
+    scan_session_id uuid,
+    file_path character varying(500) NOT NULL,
+    file_url character varying(500),
+    file_size_bytes integer,
+    mime_type character varying(100),
+    image_type character varying(50),
+    processing_status character varying(30) DEFAULT 'uploaded'::character varying NOT NULL,
+    notes text,
+    uploaded_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: product_ingredients; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.product_ingredients (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    product_id uuid NOT NULL,
+    ingredient_name character varying(255) NOT NULL,
+    ingredient_order integer,
+    percentage numeric(5,2),
+    is_additive boolean NOT NULL,
+    additive_code character varying(50),
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: product_nutrition; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.product_nutrition (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    product_id uuid NOT NULL,
+    serving_size character varying(100),
+    calories numeric(10,2),
+    protein_g numeric(10,2),
+    carbohydrates_g numeric(10,2),
+    sugar_g numeric(10,2),
+    fat_g numeric(10,2),
+    saturated_fat_g numeric(10,2),
+    sodium_mg numeric(10,2),
+    fiber_g numeric(10,2),
+    raw_nutrition_text text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: product_storage_requirements; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.product_storage_requirements (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    product_id uuid NOT NULL,
+    storage_type character varying(50) NOT NULL,
+    min_temperature_c numeric(5,2),
+    max_temperature_c numeric(5,2),
+    humidity_notes text,
+    handling_notes text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: products; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.products (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    name character varying(255) NOT NULL,
+    brand character varying(255),
+    manufacturer character varying(255),
+    sku character varying(100) NOT NULL,
+    barcode character varying(100) NOT NULL,
+    barcode_type character varying(20) DEFAULT 'EAN13'::character varying NOT NULL,
+    category character varying(100),
+    sub_category character varying(100),
+    description text,
+    net_quantity character varying(100),
+    unit character varying(50),
+    mrp numeric(10,2),
+    currency character varying(10) DEFAULT 'INR'::character varying NOT NULL,
+    country_of_origin character varying(100),
+    product_type character varying(100),
+    default_storage_type character varying(50),
+    shelf_life_label character varying(255),
+    image_url character varying(500),
+    product_image_url character varying(500),
+    is_active boolean DEFAULT true NOT NULL,
+    is_perishable boolean DEFAULT false NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: scan_alerts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.scan_alerts (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    scan_session_id uuid,
+    inventory_item_id uuid,
+    alert_type character varying(100) NOT NULL,
+    severity character varying(50) DEFAULT 'WARNING'::character varying NOT NULL,
+    field_name character varying(100),
+    message text NOT NULL,
+    is_resolved boolean DEFAULT false NOT NULL,
+    resolved_by character varying(150),
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    resolved_at timestamp with time zone
+);
+
+
+--
+-- Name: scan_sessions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.scan_sessions (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    session_status character varying(50) DEFAULT 'IN_PROGRESS'::character varying NOT NULL,
+    operator_name character varying(150),
+    device_id character varying(150),
+    notes text,
+    started_at timestamp with time zone DEFAULT now() NOT NULL,
+    completed_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: storage_contexts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.storage_contexts (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    inventory_item_id uuid NOT NULL,
+    warehouse_id character varying(100),
+    zone character varying(100),
+    aisle character varying(50),
+    shelf character varying(50),
+    bin_location character varying(100),
+    storage_type character varying(50),
+    temperature_celsius double precision,
+    humidity_percent double precision,
+    notes text,
+    recorded_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: storage_locations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.storage_locations (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    warehouse_id uuid NOT NULL,
+    location_code character varying(100) NOT NULL,
+    zone character varying(100),
+    aisle character varying(50),
+    rack character varying(50),
+    shelf character varying(50),
+    bin character varying(50),
+    storage_type character varying(50),
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: suppliers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.suppliers (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    name character varying(255) NOT NULL,
+    contact_name character varying(150),
+    phone character varying(50),
+    email character varying(255),
+    address text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: warehouses; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.warehouses (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    name character varying(255) NOT NULL,
+    code character varying(100),
+    address text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Data for Name: audit_logs; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.audit_logs (id, event_type, entity_type, entity_id, action, message, metadata_json, actor_id, actor_name, actor_type, before_state, after_state, change_summary, ip_address, user_agent, request_id, occurred_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: barcode_scans; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.barcode_scans (id, product_id, scan_session_id, raw_barcode, barcode_type, scan_source, scan_status, notes, scanned_at, created_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: external_product_enrichment_logs; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.external_product_enrichment_logs (id, product_id, barcode_value, provider, request_url, response_status, response_json, error_message, created_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: inventory_items; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.inventory_items (id, product_id, barcode_scan_id, scan_session_id, ocr_result_id, supplier_id, warehouse_id, storage_location_id, batch_number, manufacturing_date, expiry_date, packed_date, pipeline_status, status_reason, intake_source, intake_status, operator_decision, quantity, unit, intake_notes, notes, intake_at, created_at, updated_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: inventory_movements; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.inventory_movements (id, inventory_item_id, from_location_id, to_location_id, movement_type, quantity, reason, moved_by, moved_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: manual_reviews; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.manual_reviews (id, scan_session_id, inventory_item_id, ocr_result_id, review_type, original_mfg_date, original_expiry_date, corrected_mfg_date, corrected_expiry_date, corrected_batch_number, corrected_description, reviewer_id, reviewer_name, reviewer_role, reviewer_note, human_decision, review_notes, escalation_reason, review_status, reviewed_at, created_at, updated_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: ml_predictions; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.ml_predictions (id, inventory_item_id, model_name, model_version, predicted_mfg_date, predicted_expiry_date, predicted_remaining_days, predicted_decision, decision_confidence, decision_reason, raw_prediction_payload, prediction_status, failure_reason, predicted_at, created_at, updated_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: ocr_results; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.ocr_results (id, product_image_id, product_id, scan_session_id, inventory_item_id, raw_text, ocr_engine, ocr_engine_version, extracted_text_blocks, overall_confidence, ocr_confidence, extracted_product_name, extracted_brand, extracted_description, extracted_ingredients_text, extracted_nutrition_text, candidate_mfg_date, candidate_expiry_date, candidate_packed_date, best_before_text, batch_number_detected, mrp_detected, date_parse_confidence, response_json, ocr_status, failure_reason, processed_at, created_at, updated_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: product_allergens; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.product_allergens (id, product_id, allergen_name, allergen_type, contains, may_contain, source_text, created_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: product_identifiers; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.product_identifiers (id, product_id, identifier_value, identifier_type, is_primary, created_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: product_images; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.product_images (id, product_id, scan_session_id, file_path, file_url, file_size_bytes, mime_type, image_type, processing_status, notes, uploaded_at, created_at, updated_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: product_ingredients; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.product_ingredients (id, product_id, ingredient_name, ingredient_order, percentage, is_additive, additive_code, created_at, updated_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: product_nutrition; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.product_nutrition (id, product_id, serving_size, calories, protein_g, carbohydrates_g, sugar_g, fat_g, saturated_fat_g, sodium_mg, fiber_g, raw_nutrition_text, created_at, updated_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: product_storage_requirements; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.product_storage_requirements (id, product_id, storage_type, min_temperature_c, max_temperature_c, humidity_notes, handling_notes, created_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: products; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.products (id, name, brand, manufacturer, sku, barcode, barcode_type, category, sub_category, description, net_quantity, unit, mrp, currency, country_of_origin, product_type, default_storage_type, shelf_life_label, image_url, product_image_url, is_active, is_perishable, created_at, updated_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: scan_alerts; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.scan_alerts (id, scan_session_id, inventory_item_id, alert_type, severity, field_name, message, is_resolved, resolved_by, created_at, resolved_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: scan_sessions; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.scan_sessions (id, session_status, operator_name, device_id, notes, started_at, completed_at, created_at, updated_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: storage_contexts; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.storage_contexts (id, inventory_item_id, warehouse_id, zone, aisle, shelf, bin_location, storage_type, temperature_celsius, humidity_percent, notes, recorded_at, created_at, updated_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: storage_locations; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.storage_locations (id, warehouse_id, location_code, zone, aisle, rack, shelf, bin, storage_type, created_at, updated_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: suppliers; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.suppliers (id, name, contact_name, phone, email, address, created_at, updated_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: warehouses; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.warehouses (id, name, code, address, created_at, updated_at) FROM stdin;
+\.
+
+
+--
+-- Name: audit_logs audit_logs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_logs
+    ADD CONSTRAINT audit_logs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: barcode_scans barcode_scans_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.barcode_scans
+    ADD CONSTRAINT barcode_scans_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: external_product_enrichment_logs external_product_enrichment_logs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.external_product_enrichment_logs
+    ADD CONSTRAINT external_product_enrichment_logs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: inventory_items inventory_items_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory_items
+    ADD CONSTRAINT inventory_items_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: inventory_movements inventory_movements_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory_movements
+    ADD CONSTRAINT inventory_movements_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: manual_reviews manual_reviews_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.manual_reviews
+    ADD CONSTRAINT manual_reviews_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: ml_predictions ml_predictions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ml_predictions
+    ADD CONSTRAINT ml_predictions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: ocr_results ocr_results_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ocr_results
+    ADD CONSTRAINT ocr_results_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: product_allergens product_allergens_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.product_allergens
+    ADD CONSTRAINT product_allergens_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: product_identifiers product_identifiers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.product_identifiers
+    ADD CONSTRAINT product_identifiers_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: product_images product_images_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.product_images
+    ADD CONSTRAINT product_images_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: product_ingredients product_ingredients_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.product_ingredients
+    ADD CONSTRAINT product_ingredients_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: product_nutrition product_nutrition_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.product_nutrition
+    ADD CONSTRAINT product_nutrition_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: product_storage_requirements product_storage_requirements_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.product_storage_requirements
+    ADD CONSTRAINT product_storage_requirements_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: products products_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.products
+    ADD CONSTRAINT products_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: scan_alerts scan_alerts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.scan_alerts
+    ADD CONSTRAINT scan_alerts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: scan_sessions scan_sessions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.scan_sessions
+    ADD CONSTRAINT scan_sessions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: storage_contexts storage_contexts_inventory_item_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.storage_contexts
+    ADD CONSTRAINT storage_contexts_inventory_item_id_key UNIQUE (inventory_item_id);
+
+
+--
+-- Name: storage_contexts storage_contexts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.storage_contexts
+    ADD CONSTRAINT storage_contexts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: storage_locations storage_locations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.storage_locations
+    ADD CONSTRAINT storage_locations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: suppliers suppliers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.suppliers
+    ADD CONSTRAINT suppliers_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: warehouses warehouses_code_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.warehouses
+    ADD CONSTRAINT warehouses_code_key UNIQUE (code);
+
+
+--
+-- Name: warehouses warehouses_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.warehouses
+    ADD CONSTRAINT warehouses_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: ix_audit_logs_action; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_audit_logs_action ON public.audit_logs USING btree (action);
+
+
+--
+-- Name: ix_audit_logs_entity_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_audit_logs_entity_id ON public.audit_logs USING btree (entity_id);
+
+
+--
+-- Name: ix_audit_logs_event_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_audit_logs_event_type ON public.audit_logs USING btree (event_type);
+
+
+--
+-- Name: ix_audit_logs_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_audit_logs_id ON public.audit_logs USING btree (id);
+
+
+--
+-- Name: ix_audit_logs_occurred_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_audit_logs_occurred_at ON public.audit_logs USING btree (occurred_at);
+
+
+--
+-- Name: ix_barcode_scans_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_barcode_scans_id ON public.barcode_scans USING btree (id);
+
+
+--
+-- Name: ix_barcode_scans_scan_session_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_barcode_scans_scan_session_id ON public.barcode_scans USING btree (scan_session_id);
+
+
+--
+-- Name: ix_external_product_enrichment_logs_barcode_value; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_external_product_enrichment_logs_barcode_value ON public.external_product_enrichment_logs USING btree (barcode_value);
+
+
+--
+-- Name: ix_external_product_enrichment_logs_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_external_product_enrichment_logs_id ON public.external_product_enrichment_logs USING btree (id);
+
+
+--
+-- Name: ix_external_product_enrichment_logs_product_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_external_product_enrichment_logs_product_id ON public.external_product_enrichment_logs USING btree (product_id);
+
+
+--
+-- Name: ix_external_product_enrichment_logs_response_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_external_product_enrichment_logs_response_status ON public.external_product_enrichment_logs USING btree (response_status);
+
+
+--
+-- Name: ix_inventory_items_batch_number; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_inventory_items_batch_number ON public.inventory_items USING btree (batch_number);
+
+
+--
+-- Name: ix_inventory_items_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_inventory_items_id ON public.inventory_items USING btree (id);
+
+
+--
+-- Name: ix_inventory_items_intake_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_inventory_items_intake_status ON public.inventory_items USING btree (intake_status);
+
+
+--
+-- Name: ix_inventory_items_ocr_result_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_inventory_items_ocr_result_id ON public.inventory_items USING btree (ocr_result_id);
+
+
+--
+-- Name: ix_inventory_items_pipeline_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_inventory_items_pipeline_status ON public.inventory_items USING btree (pipeline_status);
+
+
+--
+-- Name: ix_inventory_items_scan_session_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_inventory_items_scan_session_id ON public.inventory_items USING btree (scan_session_id);
+
+
+--
+-- Name: ix_inventory_items_storage_location_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_inventory_items_storage_location_id ON public.inventory_items USING btree (storage_location_id);
+
+
+--
+-- Name: ix_inventory_items_supplier_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_inventory_items_supplier_id ON public.inventory_items USING btree (supplier_id);
+
+
+--
+-- Name: ix_inventory_items_warehouse_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_inventory_items_warehouse_id ON public.inventory_items USING btree (warehouse_id);
+
+
+--
+-- Name: ix_inventory_movements_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_inventory_movements_id ON public.inventory_movements USING btree (id);
+
+
+--
+-- Name: ix_inventory_movements_inventory_item_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_inventory_movements_inventory_item_id ON public.inventory_movements USING btree (inventory_item_id);
+
+
+--
+-- Name: ix_inventory_movements_movement_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_inventory_movements_movement_type ON public.inventory_movements USING btree (movement_type);
+
+
+--
+-- Name: ix_manual_reviews_human_decision; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_manual_reviews_human_decision ON public.manual_reviews USING btree (human_decision);
+
+
+--
+-- Name: ix_manual_reviews_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_manual_reviews_id ON public.manual_reviews USING btree (id);
+
+
+--
+-- Name: ix_manual_reviews_inventory_item_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_manual_reviews_inventory_item_id ON public.manual_reviews USING btree (inventory_item_id);
+
+
+--
+-- Name: ix_manual_reviews_ocr_result_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_manual_reviews_ocr_result_id ON public.manual_reviews USING btree (ocr_result_id);
+
+
+--
+-- Name: ix_manual_reviews_review_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_manual_reviews_review_status ON public.manual_reviews USING btree (review_status);
+
+
+--
+-- Name: ix_manual_reviews_scan_session_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_manual_reviews_scan_session_id ON public.manual_reviews USING btree (scan_session_id);
+
+
+--
+-- Name: ix_ml_predictions_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_ml_predictions_id ON public.ml_predictions USING btree (id);
+
+
+--
+-- Name: ix_ml_predictions_inventory_item_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_ml_predictions_inventory_item_id ON public.ml_predictions USING btree (inventory_item_id);
+
+
+--
+-- Name: ix_ml_predictions_predicted_decision; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_ml_predictions_predicted_decision ON public.ml_predictions USING btree (predicted_decision);
+
+
+--
+-- Name: ix_ocr_results_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_ocr_results_id ON public.ocr_results USING btree (id);
+
+
+--
+-- Name: ix_ocr_results_product_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_ocr_results_product_id ON public.ocr_results USING btree (product_id);
+
+
+--
+-- Name: ix_ocr_results_scan_session_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_ocr_results_scan_session_id ON public.ocr_results USING btree (scan_session_id);
+
+
+--
+-- Name: ix_product_allergens_allergen_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_product_allergens_allergen_name ON public.product_allergens USING btree (allergen_name);
+
+
+--
+-- Name: ix_product_allergens_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_product_allergens_id ON public.product_allergens USING btree (id);
+
+
+--
+-- Name: ix_product_allergens_product_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_product_allergens_product_id ON public.product_allergens USING btree (product_id);
+
+
+--
+-- Name: ix_product_identifiers_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_product_identifiers_id ON public.product_identifiers USING btree (id);
+
+
+--
+-- Name: ix_product_identifiers_identifier_value; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_product_identifiers_identifier_value ON public.product_identifiers USING btree (identifier_value);
+
+
+--
+-- Name: ix_product_identifiers_product_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_product_identifiers_product_id ON public.product_identifiers USING btree (product_id);
+
+
+--
+-- Name: ix_product_images_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_product_images_id ON public.product_images USING btree (id);
+
+
+--
+-- Name: ix_product_images_scan_session_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_product_images_scan_session_id ON public.product_images USING btree (scan_session_id);
+
+
+--
+-- Name: ix_product_ingredients_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_product_ingredients_id ON public.product_ingredients USING btree (id);
+
+
+--
+-- Name: ix_product_ingredients_ingredient_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_product_ingredients_ingredient_name ON public.product_ingredients USING btree (ingredient_name);
+
+
+--
+-- Name: ix_product_ingredients_product_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_product_ingredients_product_id ON public.product_ingredients USING btree (product_id);
+
+
+--
+-- Name: ix_product_nutrition_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_product_nutrition_id ON public.product_nutrition USING btree (id);
+
+
+--
+-- Name: ix_product_nutrition_product_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ix_product_nutrition_product_id ON public.product_nutrition USING btree (product_id);
+
+
+--
+-- Name: ix_product_storage_requirements_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_product_storage_requirements_id ON public.product_storage_requirements USING btree (id);
+
+
+--
+-- Name: ix_product_storage_requirements_product_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_product_storage_requirements_product_id ON public.product_storage_requirements USING btree (product_id);
+
+
+--
+-- Name: ix_products_barcode; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ix_products_barcode ON public.products USING btree (barcode);
+
+
+--
+-- Name: ix_products_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_products_id ON public.products USING btree (id);
+
+
+--
+-- Name: ix_products_sku; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX ix_products_sku ON public.products USING btree (sku);
+
+
+--
+-- Name: ix_scan_alerts_alert_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_scan_alerts_alert_type ON public.scan_alerts USING btree (alert_type);
+
+
+--
+-- Name: ix_scan_alerts_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_scan_alerts_id ON public.scan_alerts USING btree (id);
+
+
+--
+-- Name: ix_scan_alerts_inventory_item_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_scan_alerts_inventory_item_id ON public.scan_alerts USING btree (inventory_item_id);
+
+
+--
+-- Name: ix_scan_alerts_is_resolved; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_scan_alerts_is_resolved ON public.scan_alerts USING btree (is_resolved);
+
+
+--
+-- Name: ix_scan_alerts_scan_session_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_scan_alerts_scan_session_id ON public.scan_alerts USING btree (scan_session_id);
+
+
+--
+-- Name: ix_scan_alerts_severity; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_scan_alerts_severity ON public.scan_alerts USING btree (severity);
+
+
+--
+-- Name: ix_scan_sessions_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_scan_sessions_id ON public.scan_sessions USING btree (id);
+
+
+--
+-- Name: ix_scan_sessions_session_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_scan_sessions_session_status ON public.scan_sessions USING btree (session_status);
+
+
+--
+-- Name: ix_storage_contexts_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_storage_contexts_id ON public.storage_contexts USING btree (id);
+
+
+--
+-- Name: ix_storage_locations_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_storage_locations_id ON public.storage_locations USING btree (id);
+
+
+--
+-- Name: ix_storage_locations_location_code; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_storage_locations_location_code ON public.storage_locations USING btree (location_code);
+
+
+--
+-- Name: ix_storage_locations_warehouse_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_storage_locations_warehouse_id ON public.storage_locations USING btree (warehouse_id);
+
+
+--
+-- Name: ix_suppliers_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_suppliers_id ON public.suppliers USING btree (id);
+
+
+--
+-- Name: ix_warehouses_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_warehouses_id ON public.warehouses USING btree (id);
+
+
+--
+-- Name: barcode_scans barcode_scans_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.barcode_scans
+    ADD CONSTRAINT barcode_scans_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE SET NULL;
+
+
+--
+-- Name: barcode_scans barcode_scans_scan_session_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.barcode_scans
+    ADD CONSTRAINT barcode_scans_scan_session_id_fkey FOREIGN KEY (scan_session_id) REFERENCES public.scan_sessions(id) ON DELETE SET NULL;
+
+
+--
+-- Name: external_product_enrichment_logs external_product_enrichment_logs_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.external_product_enrichment_logs
+    ADD CONSTRAINT external_product_enrichment_logs_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE SET NULL;
+
+
+--
+-- Name: inventory_items fk_inventory_items_ocr_result_id; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory_items
+    ADD CONSTRAINT fk_inventory_items_ocr_result_id FOREIGN KEY (ocr_result_id) REFERENCES public.ocr_results(id) ON DELETE SET NULL;
+
+
+--
+-- Name: inventory_items inventory_items_barcode_scan_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory_items
+    ADD CONSTRAINT inventory_items_barcode_scan_id_fkey FOREIGN KEY (barcode_scan_id) REFERENCES public.barcode_scans(id) ON DELETE SET NULL;
+
+
+--
+-- Name: inventory_items inventory_items_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory_items
+    ADD CONSTRAINT inventory_items_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: inventory_items inventory_items_scan_session_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory_items
+    ADD CONSTRAINT inventory_items_scan_session_id_fkey FOREIGN KEY (scan_session_id) REFERENCES public.scan_sessions(id) ON DELETE SET NULL;
+
+
+--
+-- Name: inventory_items inventory_items_storage_location_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory_items
+    ADD CONSTRAINT inventory_items_storage_location_id_fkey FOREIGN KEY (storage_location_id) REFERENCES public.storage_locations(id) ON DELETE SET NULL;
+
+
+--
+-- Name: inventory_items inventory_items_supplier_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory_items
+    ADD CONSTRAINT inventory_items_supplier_id_fkey FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id) ON DELETE SET NULL;
+
+
+--
+-- Name: inventory_items inventory_items_warehouse_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory_items
+    ADD CONSTRAINT inventory_items_warehouse_id_fkey FOREIGN KEY (warehouse_id) REFERENCES public.warehouses(id) ON DELETE SET NULL;
+
+
+--
+-- Name: inventory_movements inventory_movements_from_location_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory_movements
+    ADD CONSTRAINT inventory_movements_from_location_id_fkey FOREIGN KEY (from_location_id) REFERENCES public.storage_locations(id) ON DELETE SET NULL;
+
+
+--
+-- Name: inventory_movements inventory_movements_inventory_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory_movements
+    ADD CONSTRAINT inventory_movements_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id) ON DELETE CASCADE;
+
+
+--
+-- Name: inventory_movements inventory_movements_to_location_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory_movements
+    ADD CONSTRAINT inventory_movements_to_location_id_fkey FOREIGN KEY (to_location_id) REFERENCES public.storage_locations(id) ON DELETE SET NULL;
+
+
+--
+-- Name: manual_reviews manual_reviews_inventory_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.manual_reviews
+    ADD CONSTRAINT manual_reviews_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id) ON DELETE CASCADE;
+
+
+--
+-- Name: manual_reviews manual_reviews_ocr_result_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.manual_reviews
+    ADD CONSTRAINT manual_reviews_ocr_result_id_fkey FOREIGN KEY (ocr_result_id) REFERENCES public.ocr_results(id) ON DELETE SET NULL;
+
+
+--
+-- Name: manual_reviews manual_reviews_scan_session_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.manual_reviews
+    ADD CONSTRAINT manual_reviews_scan_session_id_fkey FOREIGN KEY (scan_session_id) REFERENCES public.scan_sessions(id) ON DELETE SET NULL;
+
+
+--
+-- Name: ml_predictions ml_predictions_inventory_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ml_predictions
+    ADD CONSTRAINT ml_predictions_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id) ON DELETE CASCADE;
+
+
+--
+-- Name: ocr_results ocr_results_inventory_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ocr_results
+    ADD CONSTRAINT ocr_results_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id) ON DELETE SET NULL;
+
+
+--
+-- Name: ocr_results ocr_results_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ocr_results
+    ADD CONSTRAINT ocr_results_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE SET NULL;
+
+
+--
+-- Name: ocr_results ocr_results_product_image_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ocr_results
+    ADD CONSTRAINT ocr_results_product_image_id_fkey FOREIGN KEY (product_image_id) REFERENCES public.product_images(id) ON DELETE CASCADE;
+
+
+--
+-- Name: ocr_results ocr_results_scan_session_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ocr_results
+    ADD CONSTRAINT ocr_results_scan_session_id_fkey FOREIGN KEY (scan_session_id) REFERENCES public.scan_sessions(id) ON DELETE SET NULL;
+
+
+--
+-- Name: product_allergens product_allergens_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.product_allergens
+    ADD CONSTRAINT product_allergens_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE CASCADE;
+
+
+--
+-- Name: product_identifiers product_identifiers_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.product_identifiers
+    ADD CONSTRAINT product_identifiers_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE CASCADE;
+
+
+--
+-- Name: product_images product_images_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.product_images
+    ADD CONSTRAINT product_images_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE CASCADE;
+
+
+--
+-- Name: product_images product_images_scan_session_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.product_images
+    ADD CONSTRAINT product_images_scan_session_id_fkey FOREIGN KEY (scan_session_id) REFERENCES public.scan_sessions(id) ON DELETE SET NULL;
+
+
+--
+-- Name: product_ingredients product_ingredients_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.product_ingredients
+    ADD CONSTRAINT product_ingredients_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE CASCADE;
+
+
+--
+-- Name: product_nutrition product_nutrition_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.product_nutrition
+    ADD CONSTRAINT product_nutrition_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE CASCADE;
+
+
+--
+-- Name: product_storage_requirements product_storage_requirements_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.product_storage_requirements
+    ADD CONSTRAINT product_storage_requirements_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE CASCADE;
+
+
+--
+-- Name: scan_alerts scan_alerts_inventory_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.scan_alerts
+    ADD CONSTRAINT scan_alerts_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id) ON DELETE SET NULL;
+
+
+--
+-- Name: scan_alerts scan_alerts_scan_session_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.scan_alerts
+    ADD CONSTRAINT scan_alerts_scan_session_id_fkey FOREIGN KEY (scan_session_id) REFERENCES public.scan_sessions(id) ON DELETE SET NULL;
+
+
+--
+-- Name: storage_contexts storage_contexts_inventory_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.storage_contexts
+    ADD CONSTRAINT storage_contexts_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id) ON DELETE CASCADE;
+
+
+--
+-- Name: storage_locations storage_locations_warehouse_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.storage_locations
+    ADD CONSTRAINT storage_locations_warehouse_id_fkey FOREIGN KEY (warehouse_id) REFERENCES public.warehouses(id) ON DELETE CASCADE;
+
+
+--
+-- PostgreSQL database dump complete
+--
+
+\unrestrict AIkV6BQHaLBP5Yq1e1inc9ulpP5MgUpv5CRH7wt3olhMIUbw1cwPEAgunt71rfp
+

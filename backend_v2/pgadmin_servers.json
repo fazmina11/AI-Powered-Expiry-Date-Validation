@@ -1,0 +1,15 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Expiry Validation DB",
+      "Group": "Docker",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "expiry_db",
+      "Username": "expiry_user",
+      "Password": "expiry_pass",
+      "SSLMode": "prefer",
+      "Comment": "Phase 2 — AI-Powered Expiry Date Validation"
+    }
+  }
+}

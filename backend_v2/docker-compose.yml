@@ -1,0 +1,50 @@
+services:
+  # ── PostgreSQL Database ───────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: expiry_postgres
+    environment:
+      POSTGRES_USER: expiry_user
+      POSTGRES_PASSWORD: expiry_pass
+      POSTGRES_DB: expiry_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U expiry_user -d expiry_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - expiry_network
+
+  # ── pgAdmin — Web UI to browse tables and run queries ────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: expiry_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@expiryvalidation.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./pgadmin_servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - expiry_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  pgadmin_data:
+
+networks:
+  expiry_network:
+    driver: bridge
