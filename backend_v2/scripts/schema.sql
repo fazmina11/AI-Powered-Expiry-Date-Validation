@@ -25,12 +25,6 @@ CREATE TABLE audit_logs (
 	PRIMARY KEY (id)
 );
 
-<<<<<<< HEAD
-CREATE INDEX IF NOT EXISTS idx_products_sku      ON products (sku);
-CREATE INDEX IF NOT EXISTS idx_products_barcode  ON products (barcode);
-CREATE INDEX IF NOT EXISTS idx_products_category ON products (category);
-CREATE INDEX IF NOT EXISTS idx_products_brand    ON products (brand);
-
 -- =============================================================
 -- 0. users
 -- Application users for authentication
@@ -47,25 +41,6 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
 
--- =============================================================
--- 2. barcode_scans
--- Records every barcode scanning event.
--- A scan may or may not resolve to a known product.
--- =============================================================
-CREATE TABLE IF NOT EXISTS barcode_scans (
-    id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    product_id      UUID        REFERENCES products (id) ON DELETE SET NULL,
-    -- NULL when barcode is not yet registered in the catalogue
-    raw_barcode     VARCHAR(255) NOT NULL,
-    barcode_type    VARCHAR(20),
-    scan_source     VARCHAR(100),
-    -- device_id, session_id, api_client
-    scan_status     VARCHAR(20)  NOT NULL DEFAULT 'unresolved',
-    -- resolved | unresolved
-    notes           TEXT,
-    scanned_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
-=======
 CREATE TABLE products (
 	id UUID DEFAULT gen_random_uuid() NOT NULL, 
 	name VARCHAR(255) NOT NULL, 
@@ -92,7 +67,6 @@ CREATE TABLE products (
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	PRIMARY KEY (id)
->>>>>>> 0f02161 (Update project for Harish branch)
 );
 
 CREATE TABLE scan_sessions (

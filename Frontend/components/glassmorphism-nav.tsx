@@ -292,44 +292,6 @@ export function GlassmorphismNav() {
                   ),
                 )}
                 <div className="h-px bg-white/10 my-2" />
-<<<<<<< HEAD
-                <Link
-                  href="/login"
-                  className={`text-white/80 hover:text-white hover:bg-white/10 rounded-lg px-3 py-3 text-left transition-all duration-300 font-medium cursor-pointer transform hover:scale-[1.02] hover:translate-x-1 ${
-                    isOpen ? "animate-mobile-menu-item" : ""
-                  }`}
-                  style={{
-                    animationDelay: isOpen ? `${navigation.length * 80 + 100}ms` : "0ms",
-                  }}
-                  onClick={() => setIsOpen(false)}
-                >
-                  Login
-                </Link>
-                <Link
-                  href="/signup"
-                  className={`text-white/80 hover:text-white hover:bg-white/10 rounded-lg px-3 py-3 text-left transition-all duration-300 font-medium cursor-pointer transform hover:scale-[1.02] hover:translate-x-1 ${
-                    isOpen ? "animate-mobile-menu-item" : ""
-                  }`}
-                  style={{
-                    animationDelay: isOpen ? `${(navigation.length + 1) * 80 + 120}ms` : "0ms",
-                  }}
-                  onClick={() => setIsOpen(false)}
-                >
-                  Sign up
-                </Link>
-                <button
-                  className={`relative bg-white hover:bg-gray-50 text-black font-medium px-6 py-3 rounded-full flex items-center transition-all duration-300 hover:scale-105 hover:shadow-lg cursor-pointer group transform ${
-                    isOpen ? "animate-mobile-menu-item" : ""
-                  }`}
-                  style={{
-                    animationDelay: isOpen ? `${(navigation.length + 2) * 80 + 150}ms` : "0ms",
-                  }}
-                  onClick={() => scrollToSection("#contact")}
-                >
-                  <span className="mr-2">Get Started</span>
-                  <ArrowRight size={16} className="transition-transform duration-300 group-hover:translate-x-1" />
-                </button>
-=======
                 {user ? (
                   <>
                     <div className="text-white font-medium mb-2">
@@ -383,7 +345,6 @@ export function GlassmorphismNav() {
                     </button>
                   </>
                 )}
->>>>>>> 0f02161 (Update project for Harish branch)
               </div>
             </div>
           </div>

@@ -2,12 +2,8 @@
 
 import { Button } from "@/components/ui/button"
 import RotatingText from "./RotatingText"
-<<<<<<< HEAD
-import AuthWelcome from "./auth-welcome"
-=======
 import { useAuth } from "@/contexts/AuthContext"
 import { useRouter } from "next/navigation"
->>>>>>> 0f02161 (Update project for Harish branch)
 
 const ArrowRight = () => (
   <svg
@@ -74,29 +70,6 @@ export function HeroSection() {
           Automated inventory validation platform that identifies products, verifies expiry information, calculates remaining shelf life, and makes intelligent inventory decisions in real time.
         </p>
 
-<<<<<<< HEAD
-        <div className="flex flex-col items-center space-y-6 mb-8 animate-fade-in-buttons">
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full max-w-2xl">
-            <Button
-              size="lg"
-              className="bg-white text-black rounded-full px-8 py-4 text-lg font-medium transition-all duration-300 hover:bg-gray-50 hover:scale-105 hover:shadow-lg group cursor-pointer relative overflow-hidden"
-            >
-              Get Started
-              <ArrowRight />
-            </Button>
-
-            <Button
-              asChild
-              variant="outline"
-              size="lg"
-              className="rounded-full px-8 py-4 text-lg font-medium border-border hover:bg-accent transition-all duration-200 hover:scale-105 group bg-transparent cursor-pointer"
-            >
-              <a href="/signup" className="flex items-center gap-2">
-                Sign Up
-              </a>
-            </Button>
-          </div>
-=======
         {/* CTA Buttons */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-8 sm:mb-16 animate-fade-in-buttons">
           <Button
@@ -107,7 +80,6 @@ export function HeroSection() {
             Get Started
             <ArrowRight />
           </Button>
->>>>>>> 0f02161 (Update project for Harish branch)
 
           <Button
             variant="outline"
