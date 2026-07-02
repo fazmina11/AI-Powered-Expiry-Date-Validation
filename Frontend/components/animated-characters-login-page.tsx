@@ -301,7 +301,13 @@ export function AnimatedCharactersLoginPage() {
 
       if (!res.ok) {
         const body = await res.json();
-        setError(body.detail || "Login failed");
+        let errorMsg = "Login failed";
+        if (typeof body.detail === "string") {
+          errorMsg = body.detail;
+        } else if (Array.isArray(body.detail)) {
+          errorMsg = body.detail.map((err: any) => `${err.loc[err.loc.length - 1]}: ${err.msg}`).join(", ");
+        }
+        setError(errorMsg);
         setIsLoading(false);
         return;
       }

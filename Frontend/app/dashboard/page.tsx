@@ -1,26 +1,5 @@
 "use client";
 
-                    </td>
-                    <td className="py-4 px-4">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          item.daysLeft <= 7
-                            ? "bg-red-100 text-red-800"
-                            : "bg-orange-100 text-orange-800"
-                        }`}
-                      >
-                        <AlertTriangle className="size-3 mr-1" />
-                        {item.daysLeft} days
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
-=======
 import { useState, useEffect } from "react";
 import {
   Package,
