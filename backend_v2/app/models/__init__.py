@@ -32,17 +32,12 @@ from app.models.audit_log import AuditLog
 from app.models.user import User
 
 __all__ = [
-<<<<<<< HEAD
-    "Product", "BarcodeScan", "ProductImage", "OCRResult",
-    "InventoryItem", "StorageContext", "MLPrediction",
-    "ManualReview", "AuditLog",
-    "User",
-=======
     "Product", "ProductIdentifier", "ProductIngredient",
     "ProductAllergen", "ProductNutrition", "ProductStorageRequirement",
     "Supplier", "Warehouse", "StorageLocation", "ScanSession",
     "BarcodeScan", "ProductImage", "OCRResult", "InventoryItem",
     "InventoryMovement", "ManualReview", "ScanAlert", "AuditLog",
     "ExternalProductEnrichmentLog", "StorageContext", "MLPrediction",
->>>>>>> 0f02161 (Update project for Harish branch)
+    "User",
 ]
+
