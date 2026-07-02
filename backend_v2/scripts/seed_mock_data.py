@@ -159,8 +159,8 @@ def seed_inventory_items(cur, products, scan_ids):
             INSERT INTO inventory_items
               (id, product_id, barcode_scan_id, batch_number,
                manufacturing_date, expiry_date, pipeline_status,
-               quantity, unit, intake_at, created_at, updated_at)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'units',NOW(),NOW(),NOW())
+               intake_source, intake_status, quantity, unit, intake_at, created_at, updated_at)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,'OCR_SCAN','DATA_INCOMPLETE',%s,'units',NOW(),NOW(),NOW())
             ON CONFLICT DO NOTHING
         """, (iid, pid, sid, batch, mfg, exp, pipeline, random.randint(1, 50)))
         inv_ids.append((iid, pid, exp, pipeline, storage))
