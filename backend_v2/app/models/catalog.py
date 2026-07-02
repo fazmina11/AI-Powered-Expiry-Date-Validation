@@ -16,6 +16,7 @@ class ProductIdentifier(Base):
     identifier_value = Column(String(150), nullable=False, index=True)
     identifier_type = Column(String(50), nullable=False, default="EAN13")
     is_primary = Column(Boolean, nullable=False, default=True)
+    source = Column(String(50), nullable=False, default="LOCAL_DATABASE")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     product = relationship("Product", back_populates="identifiers")
@@ -34,7 +35,7 @@ class ProductIngredient(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
-    product = relationship("Product", back_populates="ingredients")
+    product = relationship("Product", back_populates="ingredient_rows")
 
 
 class ProductAllergen(Base):

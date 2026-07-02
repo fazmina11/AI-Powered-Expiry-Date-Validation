@@ -7,6 +7,7 @@ from app.database import Base, check_db_connection, engine
 from app.models import (  # noqa: F401
     AuditLog,
     BarcodeScan,
+    ExternalProductCache,
     ExternalProductEnrichmentLog,
     InventoryItem,
     InventoryMovement,
@@ -18,13 +19,16 @@ from app.models import (  # noqa: F401
     ProductIdentifier,
     ProductImage,
     ProductIngredient,
+    ProductLookupLog,
     ProductNutrition,
+    ProductQuestionLog,
     ProductStorageRequirement,
     ScanAlert,
     ScanSession,
     StorageContext,
     StorageLocation,
     Supplier,
+    UnknownProductRequest,
     Warehouse,
 )
 

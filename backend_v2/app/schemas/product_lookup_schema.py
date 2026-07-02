@@ -1,24 +1,34 @@
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import Any, Optional, List, Dict
+from pydantic import BaseModel
 
-class ProductLookup(BaseModel):
-    found: bool
-    source: str
-    barcode: str
-    product_name: Optional[str] = None
+class ProductSummary(BaseModel):
+    id: Optional[str] = None
+    name: Optional[str] = None
+    sku: Optional[str] = None
+    barcode: Optional[str] = None
+    barcode_type: Optional[str] = None
     brand: Optional[str] = None
-    manufacturer: Optional[str] = None
     category: Optional[str] = None
-    subcategory: Optional[str] = None
-    quantity: Optional[str] = None
-    weight: Optional[str] = None
+    sub_category: Optional[str] = None
+    description: Optional[str] = None
     ingredients: Optional[str] = None
-    nutrition: Optional[str] = None
-    packaging: Optional[str] = None
-    image_urls: List[str] = Field(default_factory=list)
-    country_of_sale: Optional[str] = None
-    labels: Optional[str] = None
-    product_url: Optional[str] = None
-    lookup_time_ms: float = 0.0
-    cache_status: str = "MISS"
-    additional_attributes: Dict[str, Any] = Field(default_factory=dict)
+    nutrition_info: Optional[Dict[str, Any]] = None
+    storage_instruction: Optional[str] = None
+    manufacturer: Optional[str] = None
+    country_of_origin: Optional[str] = None
+    image_url: Optional[str] = None
+    product_source: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+class ProductSearchResponse(BaseModel):
+    status: str
+    source: Optional[str] = None
+    search_type: str
+    result_count: int
+    query: Optional[str] = None
+    message: Optional[str] = None
+    suggested_action: Optional[str] = None
+    product: Optional[Dict[str, Any]] = None
+    products: Optional[List[Dict[str, Any]]] = None

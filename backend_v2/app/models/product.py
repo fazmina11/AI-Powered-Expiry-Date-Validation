@@ -10,7 +10,7 @@ One Product can have many:
 import uuid
 
 from sqlalchemy import Boolean, Column, Numeric, String, Text, DateTime
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -34,6 +34,9 @@ class Product(Base):
     category        = Column(String(100),  nullable=True)
     sub_category    = Column(String(100),  nullable=True)
     description     = Column(Text,         nullable=True)
+    ingredients     = Column(Text,         nullable=True)
+    nutrition_info  = Column(JSONB,        nullable=True)
+    storage_instruction = Column(Text,     nullable=True)
     net_quantity    = Column(String(100),  nullable=True)
     unit            = Column(String(50),   nullable=True)
     mrp             = Column(Numeric(10, 2), nullable=True)
@@ -50,6 +53,9 @@ class Product(Base):
     image_url       = Column(String(500),  nullable=True)
                    # URL to primary product image (populated by image upload)
     product_image_url = Column(String(500), nullable=True)
+    product_source  = Column(String(50),   nullable=False, default="LOCAL_DATABASE")
+    external_source = Column(String(100),  nullable=True)
+    external_source_url = Column(Text,     nullable=True)
 
     # ── Status ────────────────────────────────────────────────
     is_active       = Column(Boolean, default=True, nullable=False)
@@ -64,11 +70,13 @@ class Product(Base):
     product_images  = relationship("ProductImage", back_populates="product", cascade="all, delete-orphan")
     inventory_items = relationship("InventoryItem", back_populates="product")
     identifiers     = relationship("ProductIdentifier", back_populates="product", cascade="all, delete-orphan")
-    ingredients     = relationship("ProductIngredient", back_populates="product", cascade="all, delete-orphan")
+    ingredient_rows = relationship("ProductIngredient", back_populates="product", cascade="all, delete-orphan")
     allergens       = relationship("ProductAllergen", back_populates="product", cascade="all, delete-orphan")
     nutrition       = relationship("ProductNutrition", back_populates="product", cascade="all, delete-orphan", uselist=False)
     storage_requirements = relationship("ProductStorageRequirement", back_populates="product", cascade="all, delete-orphan")
     enrichment_logs = relationship("ExternalProductEnrichmentLog", back_populates="product")
+    lookup_logs     = relationship("ProductLookupLog", back_populates="product")
+    resolved_unknown_requests = relationship("UnknownProductRequest", back_populates="resolved_product")
 
     def __repr__(self):
         return f"<Product sku={self.sku} name={self.name!r}>"

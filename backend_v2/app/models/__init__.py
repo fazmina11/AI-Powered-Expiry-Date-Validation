@@ -30,6 +30,8 @@ from app.models.ml_prediction import MLPrediction
 from app.models.manual_review import ManualReview
 from app.models.audit_log import AuditLog
 from app.models.user import User
+from app.models.product_lookup import ExternalProductCache, ProductLookupLog, UnknownProductRequest
+from app.models.product_question import ProductQuestionLog
 
 __all__ = [
     "Product", "ProductIdentifier", "ProductIngredient",
@@ -37,7 +39,8 @@ __all__ = [
     "Supplier", "Warehouse", "StorageLocation", "ScanSession",
     "BarcodeScan", "ProductImage", "OCRResult", "InventoryItem",
     "InventoryMovement", "ManualReview", "ScanAlert", "AuditLog",
-    "ExternalProductEnrichmentLog", "StorageContext", "MLPrediction",
-    "User",
+    "ExternalProductEnrichmentLog", "ExternalProductCache",
+    "ProductLookupLog", "UnknownProductRequest", "ProductQuestionLog",
+    "StorageContext", "MLPrediction", "User"
 ]
 
