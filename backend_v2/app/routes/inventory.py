@@ -5,6 +5,7 @@ from datetime import date
 from typing import Any, Optional
 from pydantic import BaseModel
 import json
+from app.schemas.database_schema import InventoryItemUpdate
 from app.models.audit_log import AuditLog
 from app.models.ocr_result import OCRResult
 
@@ -92,6 +93,51 @@ def get_inventory_item(item_id: UUID, db: Session = Depends(get_db)):
     if not item:
         raise HTTPException(status_code=404, detail="Inventory item not found")
     return success_response(_inventory_to_dict(item), "Inventory item fetched successfully")
+
+@router.put("/{item_id}")
+def update_inventory_item(item_id: UUID, payload: InventoryItemUpdate, db: Session = Depends(get_db)):
+    item = db.query(InventoryItem).filter(InventoryItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+    
+    update_data = payload.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(item, key, value)
+        
+    db.commit()
+    db.refresh(item)
+    
+    audit_log = AuditLog(
+        event_type="inventory.update",
+        entity_type="inventory_item",
+        entity_id=str(item.id),
+        action="update",
+        message="Inventory item updated manually.",
+        metadata_json=update_data
+    )
+    db.add(audit_log)
+    db.commit()
+    
+    return success_response(_inventory_to_dict(item), "Inventory item updated successfully")
+
+@router.delete("/{item_id}")
+def delete_inventory_item(item_id: UUID, db: Session = Depends(get_db)):
+    item = db.query(InventoryItem).filter(InventoryItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+        
+    # Optional: Log deletion before removing
+    audit_log = AuditLog(
+        event_type="inventory.delete",
+        entity_type="inventory_item",
+        entity_id=str(item.id),
+        action="delete",
+        message="Inventory item deleted manually."
+    )
+    db.add(audit_log)
+    db.delete(item)
+    db.commit()
+    return success_response(None, "Inventory item deleted successfully")
 
 from app.models.product import Product
 from datetime import datetime

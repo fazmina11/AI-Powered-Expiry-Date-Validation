@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Edit, Trash2, Eye, Plus, RefreshCw, AlertTriangle, CheckCircle, Clock, XCircle, Loader2 } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Edit, Trash2, Eye, Plus, RefreshCw, AlertTriangle, CheckCircle, Clock, XCircle, Loader2, Search, Filter, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { productApi, inventoryApi, Product, InventoryItem, InventoryIntakeRequest } from "@/services/apiService";
 
 // Status badge helper
@@ -196,6 +197,26 @@ export default function InventoryPage() {
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isIntakeOpen, setIsIntakeOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  
+  // Filter state
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState({
+    search: "",
+    category: "",
+    brand: "",
+    inventoryStatus: "",
+    scanStatus: "",
+    ocrStatus: "",
+    manualReviewStatus: "",
+    warehouse: "",
+    storageLocation: "",
+    dateFrom: "",
+    dateTo: "",
+  });
+
+  const [isUpdating, setIsUpdating] = useState(false);
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -236,6 +257,88 @@ export default function InventoryPage() {
     return "text-green-600";
   };
 
+  const handleDelete = async () => {
+    if (!selectedItem) return;
+    setIsUpdating(true);
+    try {
+      await inventoryApi.delete(selectedItem.id);
+      setIsDeleteOpen(false);
+      setSelectedItem(null);
+      fetchData();
+    } catch (err) {
+      alert("Failed to delete item: " + (err as Error).message);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedItem) return;
+    setIsUpdating(true);
+    try {
+      const form = e.target as HTMLFormElement;
+      const data = {
+        batch_number: (form.elements.namedItem("batch_number") as HTMLInputElement).value,
+        manufacturing_date: (form.elements.namedItem("manufacturing_date") as HTMLInputElement).value || null,
+        expiry_date: (form.elements.namedItem("expiry_date") as HTMLInputElement).value || null,
+        status: (form.elements.namedItem("status") as HTMLSelectElement).value,
+      };
+      // status maps to operator_decision in backend logic for simple updates in our mockup
+      await inventoryApi.update(selectedItem.id, {
+        batch_number: data.batch_number,
+        manufacturing_date: data.manufacturing_date,
+        expiry_date: data.expiry_date,
+        operator_decision: data.status !== "KEEP" ? data.status : undefined
+      } as any);
+      setIsEditOpen(false);
+      fetchData();
+    } catch (err) {
+      alert("Failed to update item: " + (err as Error).message);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const filteredItems = useMemo(() => {
+    return inventoryItems.filter((item) => {
+      const p = products[item.product_id];
+      const s = filters.search.toLowerCase();
+      
+      // Text Search
+      if (s) {
+        const matchesName = p?.name?.toLowerCase().includes(s);
+        const matchesBarcode = p?.barcode?.toLowerCase().includes(s);
+        const matchesBatch = item.batch_number?.toLowerCase().includes(s);
+        if (!matchesName && !matchesBarcode && !matchesBatch) return false;
+      }
+      
+      // Category & Brand
+      if (filters.category && p?.category !== filters.category) return false;
+      if (filters.brand && p?.brand !== filters.brand) return false;
+      
+      // Statuses
+      const itemStatus = (item.operator_decision || item.intake_status || "PENDING").toUpperCase();
+      if (filters.inventoryStatus && itemStatus !== filters.inventoryStatus) return false;
+      
+      // Dates (simple logic: check if any of the item's dates fall in range)
+      if (filters.dateFrom) {
+        const fromDate = new Date(filters.dateFrom).getTime();
+        const mfg = item.manufacturing_date ? new Date(item.manufacturing_date).getTime() : 0;
+        const exp = item.expiry_date ? new Date(item.expiry_date).getTime() : 0;
+        if ((mfg && mfg < fromDate) && (exp && exp < fromDate)) return false;
+      }
+      if (filters.dateTo) {
+        const toDate = new Date(filters.dateTo).getTime();
+        const mfg = item.manufacturing_date ? new Date(item.manufacturing_date).getTime() : Infinity;
+        const exp = item.expiry_date ? new Date(item.expiry_date).getTime() : Infinity;
+        if ((mfg && mfg > toDate) && (exp && exp > toDate)) return false;
+      }
+      
+      return true;
+    });
+  }, [inventoryItems, products, filters]);
+
   return (
     <div className="p-8 space-y-6">
       <div className="flex items-center justify-between">
@@ -258,18 +361,145 @@ export default function InventoryPage() {
       {error && (
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
       )}
+      
+      {/* Search and Filters Bar */}
+      <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
+            <Input 
+              placeholder="Search by product name, barcode, or batch number..." 
+              className="pl-9 bg-gray-50 border-gray-200 text-gray-900"
+              value={filters.search}
+              onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
+            />
+          </div>
+          <Button 
+            variant="outline" 
+            className={`gap-2 ${showFilters ? 'bg-primary/5 border-primary/30 text-primary' : ''}`}
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            <Filter className="size-4" />
+            Filters
+            {Object.values(filters).filter(v => v !== "" && v !== filters.search).length > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground text-xs font-bold">
+                {Object.values(filters).filter(v => v !== "" && v !== filters.search).length}
+              </span>
+            )}
+          </Button>
+          {(Object.values(filters).some(v => v !== "")) && (
+            <Button 
+              variant="ghost" 
+              className="text-gray-500 hover:text-red-600"
+              onClick={() => setFilters({
+                search: "", category: "", brand: "", inventoryStatus: "", 
+                scanStatus: "", ocrStatus: "", manualReviewStatus: "", 
+                warehouse: "", storageLocation: "", dateFrom: "", dateTo: ""
+              })}
+            >
+              <X className="size-4 mr-1" /> Clear
+            </Button>
+          )}
+        </div>
+        
+        {showFilters && (
+          <div className="pt-4 border-t border-gray-100 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-gray-500">Category</Label>
+              <Input 
+                placeholder="All Categories" 
+                className="h-9 text-sm text-gray-900 bg-white" 
+                value={filters.category}
+                onChange={(e) => setFilters(prev => ({ ...prev, category: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-gray-500">Brand</Label>
+              <Input 
+                placeholder="All Brands" 
+                className="h-9 text-sm text-gray-900 bg-white" 
+                value={filters.brand}
+                onChange={(e) => setFilters(prev => ({ ...prev, brand: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-gray-500">Inventory Status</Label>
+              <select 
+                className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                value={filters.inventoryStatus}
+                onChange={(e) => setFilters(prev => ({ ...prev, inventoryStatus: e.target.value }))}
+              >
+                <option value="">All Statuses</option>
+                <option value="ACCEPTED">Accepted</option>
+                <option value="REJECTED">Rejected</option>
+                <option value="PRIORITY_SALE">Priority Sale</option>
+                <option value="MANUAL_REVIEW">Manual Review</option>
+                <option value="PENDING">Pending</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-gray-500">Manual Review Status</Label>
+              <select 
+                className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                value={filters.manualReviewStatus}
+                onChange={(e) => setFilters(prev => ({ ...prev, manualReviewStatus: e.target.value }))}
+              >
+                <option value="">All</option>
+                <option value="PENDING">Pending Review</option>
+                <option value="RESOLVED">Resolved</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-gray-500">Warehouse</Label>
+              <Input 
+                placeholder="Any Warehouse" 
+                className="h-9 text-sm text-gray-900 bg-white" 
+                value={filters.warehouse}
+                onChange={(e) => setFilters(prev => ({ ...prev, warehouse: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-gray-500">Storage Location</Label>
+              <Input 
+                placeholder="Any Location" 
+                className="h-9 text-sm text-gray-900 bg-white" 
+                value={filters.storageLocation}
+                onChange={(e) => setFilters(prev => ({ ...prev, storageLocation: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-gray-500">Date From</Label>
+              <Input 
+                type="date" 
+                className="h-9 text-sm text-gray-900 bg-white" 
+                value={filters.dateFrom}
+                onChange={(e) => setFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-gray-500">Date To</Label>
+              <Input 
+                type="date" 
+                className="h-9 text-sm text-gray-900 bg-white" 
+                value={filters.dateTo}
+                onChange={(e) => setFilters(prev => ({ ...prev, dateTo: e.target.value }))}
+              />
+            </div>
+          </div>
+        )}
+      </div>
 
-      <Card>
+      <Card className="bg-white border-gray-200 shadow-sm">
         <CardHeader className="pb-4">
-          <CardTitle>Inventory Items</CardTitle>
+          <CardTitle className="text-gray-900">Inventory Items</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="flex items-center justify-center py-16 text-gray-500">
-              <Loader2 className="size-6 animate-spin mr-3" />
+              <Loader2 className="size-6 animate-spin mr-3 text-primary" />
               Loading inventory...
             </div>
-          ) : inventoryItems.length === 0 ? (
+          ) : filteredItems.length === 0 ? (
             <div className="text-center py-16 text-gray-400">
               <p className="font-medium">No inventory items found</p>
               <p className="text-sm mt-1">Click "New Intake" to add a product to inventory.</p>
@@ -288,13 +518,13 @@ export default function InventoryPage() {
                     <th className="text-left py-3 px-4 font-medium text-gray-500 text-sm">Actions</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {inventoryItems.map((item) => {
+                <tbody className="bg-white">
+                  {filteredItems.map((item) => {
                     const product = products[item.product_id];
                     return (
                       <tr
                         key={item.id}
-                        className="border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer"
+                        className="border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer text-gray-900"
                         onClick={() => handleViewItem(item)}
                       >
                         <td className="py-3 px-4">
@@ -311,14 +541,43 @@ export default function InventoryPage() {
                         </td>
                         <td className="py-3 px-4"><StatusBadge status={item.status} /></td>
                         <td className="py-3 px-4">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={(e) => { e.stopPropagation(); handleViewItem(item); }}
-                          >
-                            <Eye className="size-4" />
-                          </Button>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-gray-500 hover:text-gray-900"
+                              onClick={(e) => { e.stopPropagation(); handleViewItem(item); }}
+                              title="View Details"
+                            >
+                              <Eye className="size-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-blue-500 hover:text-blue-700"
+                              onClick={(e) => { 
+                                e.stopPropagation(); 
+                                setSelectedItem(item);
+                                setIsEditOpen(true);
+                              }}
+                              title="Edit Item"
+                            >
+                              <Edit className="size-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-red-500 hover:text-red-700"
+                              onClick={(e) => { 
+                                e.stopPropagation(); 
+                                setSelectedItem(item);
+                                setIsDeleteOpen(true);
+                              }}
+                              title="Delete Item"
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -388,6 +647,95 @@ export default function InventoryPage() {
           )}
           <DialogFooter>
             <Button variant="secondary" onClick={() => setIsDetailOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Edit Item Modal */}
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="sm:max-w-md bg-white">
+          <DialogHeader>
+            <DialogTitle className="text-gray-900">Edit Inventory Item</DialogTitle>
+          </DialogHeader>
+          {selectedItem && (
+            <form onSubmit={handleEditSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-gray-900">Product</Label>
+                <div className="text-sm font-medium text-gray-700 p-2 bg-gray-50 rounded-md border border-gray-200">
+                  {products[selectedItem.product_id]?.name || "Unknown Product"}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="batch_number" className="text-gray-900">Batch Number</Label>
+                <Input 
+                  id="batch_number" 
+                  name="batch_number"
+                  defaultValue={selectedItem.batch_number || ""} 
+                  className="bg-white border-gray-300 text-gray-900"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="manufacturing_date" className="text-gray-900">Manufacturing Date</Label>
+                <Input 
+                  id="manufacturing_date" 
+                  name="manufacturing_date"
+                  type="date"
+                  defaultValue={selectedItem.manufacturing_date || ""} 
+                  className="bg-white border-gray-300 text-gray-900"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="expiry_date" className="text-gray-900">Expiry Date</Label>
+                <Input 
+                  id="expiry_date" 
+                  name="expiry_date"
+                  type="date"
+                  defaultValue={selectedItem.expiry_date || ""} 
+                  className="bg-white border-gray-300 text-gray-900"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="status" className="text-gray-900">Status</Label>
+                <select 
+                  id="status"
+                  name="status"
+                  defaultValue="KEEP"
+                  className="flex h-10 w-full items-center justify-between rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                >
+                  <option value="KEEP">Keep Current ({selectedItem.status})</option>
+                  <option value="ACCEPTED">Accepted</option>
+                  <option value="REJECTED">Rejected</option>
+                  <option value="PRIORITY_SALE">Priority Sale</option>
+                  <option value="MANUAL_REVIEW">Manual Review</option>
+                </select>
+              </div>
+              
+              <DialogFooter className="pt-4">
+                <Button type="button" variant="outline" onClick={() => setIsEditOpen(false)} className="text-gray-700">Cancel</Button>
+                <Button type="submit" disabled={isUpdating}>
+                  {isUpdating ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
+                  Save Changes
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Modal */}
+      <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
+        <DialogContent className="sm:max-w-md bg-white">
+          <DialogHeader>
+            <DialogTitle className="text-gray-900">Delete Inventory Item</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 text-gray-600">
+            Are you sure you want to permanently delete this inventory item (Batch: <span className="font-semibold text-gray-900">{selectedItem?.batch_number || "Unknown"}</span>)? This action cannot be undone.
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDeleteOpen(false)} className="text-gray-700">Cancel</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={isUpdating}>
+              {isUpdating ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
+              Delete Permanently
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

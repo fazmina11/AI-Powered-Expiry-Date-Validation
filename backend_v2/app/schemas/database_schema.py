@@ -177,6 +177,19 @@ class InventoryItemCreate(BaseModel):
     notes: Optional[str] = None
 
 
+class InventoryItemUpdate(BaseModel):
+    batch_number: Optional[str] = None
+    manufacturing_date: Optional[date] = None
+    expiry_date: Optional[date] = None
+    packed_date: Optional[date] = None
+    quantity: Optional[int] = None
+    unit: Optional[str] = None
+    intake_status: Optional[str] = None
+    pipeline_status: Optional[str] = None
+    operator_decision: Optional[str] = None
+    notes: Optional[str] = None
+
+
 class InventoryMovementCreate(BaseModel):
     inventory_item_id: UUID
     from_location_id: Optional[UUID] = None

@@ -272,6 +272,20 @@ export const inventoryApi = {
     return response.data;
   },
 
+  async update(id: string, data: Partial<InventoryItem>): Promise<InventoryItem> {
+    const response = await apiFetch<ApiResponse<InventoryItem>>(`/inventory/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+    return response.data;
+  },
+
+  async delete(id: string): Promise<void> {
+    await apiFetch<ApiResponse<null>>(`/inventory/${id}`, {
+      method: "DELETE",
+    });
+  },
+
   async intake(data: InventoryIntakeRequest): Promise<InventoryItem> {
     const response = await apiFetch<ApiResponse<InventoryItem>>(
       "/inventory/intake",
@@ -328,51 +342,115 @@ export const scanApi = {
 
 export interface ScanAlert {
   id: string;
+  scan_session_id: string | null;
   inventory_item_id: string | null;
-  product_name: string;
   alert_type: string;
   severity: string;
   message: string;
+  issue: string;
   is_resolved: boolean;
   created_at: string | null;
   resolved_at: string | null;
+  product_name: string;
+  barcode: string;
+}
+
+export interface AlertDetails extends ScanAlert {
+  error_reason: string;
+  ocr_raw_text: string | null;
+  detected_mfg: string | null;
+  detected_exp: string | null;
+  detected_batch: string | null;
+  image_url: string | null;
+}
+
+export interface AlertSummary {
+  total_alerts: number;
+  critical_alerts: number;
+  warnings: number;
+  resolved_alerts: number;
+  resolved_today: number;
+  ocr_failed: number;
+  missing_exp: number;
+  unknown_barcode: number;
+  pending_reviews: number;
 }
 
 export interface ManualReview {
   id: string;
+  scan_session_id: string | null;
   inventory_item_id: string | null;
-  product_name: string;
   review_type: string;
   review_status: string;
-  human_decision: string | null;
-  review_notes: string | null;
   created_at: string | null;
+  product_name: string;
+  barcode: string;
+  batch_number: string | null;
+  original_mfg_date: string | null;
+  original_expiry_date: string | null;
+  corrected_mfg_date: string | null;
+  corrected_expiry_date: string | null;
+  human_decision: string | null;
 }
 
 export const alertApi = {
-  async getAlerts(): Promise<ScanAlert[]> {
-    const response = await apiFetch<ApiResponse<{ alerts: ScanAlert[] }>>("/alerts");
+  async getSummary(): Promise<AlertSummary> {
+    const response = await apiFetch<ApiResponse<AlertSummary>>("/alerts/summary");
+    return response.data;
+  },
+
+  async getAlerts(params?: { status?: string; search?: string; severity?: string; alert_type?: string }): Promise<ScanAlert[]> {
+    const searchParams = new URLSearchParams();
+    if (params?.status) searchParams.append("status", params.status);
+    if (params?.search) searchParams.append("search", params.search);
+    if (params?.severity) searchParams.append("severity", params.severity);
+    if (params?.alert_type) searchParams.append("alert_type", params.alert_type);
+    
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : "";
+    const response = await apiFetch<ApiResponse<{ alerts: ScanAlert[] }>>(`/alerts${query}`);
     return response.data.alerts;
   },
   
-  async resolveAlert(alertId: string): Promise<{ id: string; is_resolved: boolean }> {
+  async getAlertDetails(alertId: string): Promise<AlertDetails> {
+    const response = await apiFetch<ApiResponse<AlertDetails>>(`/alerts/${alertId}`);
+    return response.data;
+  },
+
+  async resolveAlert(alertId: string, notes?: string): Promise<{ id: string; is_resolved: boolean }> {
     const response = await apiFetch<ApiResponse<{ id: string; is_resolved: boolean }>>(`/alerts/${alertId}/resolve`, {
       method: "POST",
+      body: JSON.stringify({ notes }),
     });
     return response.data;
   },
 };
 
 export const reviewApi = {
-  async getReviews(): Promise<ManualReview[]> {
-    const response = await apiFetch<ApiResponse<{ reviews: ManualReview[] }>>("/reviews");
+  async getReviews(params?: { status?: string; search?: string }): Promise<ManualReview[]> {
+    const searchParams = new URLSearchParams();
+    if (params?.status) searchParams.append("status", params.status);
+    if (params?.search) searchParams.append("search", params.search);
+    
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : "";
+    const response = await apiFetch<ApiResponse<{ reviews: ManualReview[] }>>(`/reviews${query}`);
     return response.data.reviews;
   },
   
-  async resolveReview(reviewId: string, decision: string, notes?: string): Promise<{ id: string; status: string }> {
-    const response = await apiFetch<ApiResponse<{ id: string; status: string }>>(`/reviews/${reviewId}/resolve`, {
+  async correctReview(
+    reviewId: string, 
+    data: { 
+      decision: string;
+      corrected_product_name?: string;
+      corrected_mfg_date?: string;
+      corrected_expiry_date?: string;
+      corrected_batch_number?: string;
+      corrected_description?: string;
+      reviewer_note?: string;
+    }
+  ): Promise<{ id: string; status: string }> {
+    const response = await apiFetch<ApiResponse<{ id: string; status: string }>>(`/reviews/${reviewId}/correct`, {
       method: "POST",
-      body: JSON.stringify({ decision, notes }),
+      body: JSON.stringify(data),
     });
     return response.data;
   },

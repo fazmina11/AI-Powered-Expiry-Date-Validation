@@ -1,461 +1,408 @@
 # AI-Powered Expiry Date Validation
 
-Backend service for validating packaged products during warehouse / dark-store inventory intake.
+Full-stack expiry-date validation system for retail, warehouse, and dark-store inventory operations. The project combines barcode lookup, OCR-assisted label scanning, product intelligence, inventory intake, alerts, manual review flows, and a dashboard UI.
 
-Supports barcode-based product lookup, batch creation, manufacturing and expiry date validation, remaining shelf-life calculation, automated inventory decisions, and dashboard monitoring.
+The current codebase contains two backend tracks:
 
-> **Phase 1 complete.** ML / OCR integration is not part of this phase — the backend is designed to accept OCR output via `POST /api/v1/validation/manual` when the ML team is ready.
+- `backend_v2/` is the active full-stack API used by the Next.js frontend.
+- `api/`, `pipeline/`, and `demo/` are the legacy OCR/scanner prototype used by `Start_All.bat`.
+- `backend/` is the original Phase 1 backend kept for reference and tests.
 
----
+## What We Have Built So Far
 
-## Architecture
+- Next.js dashboard frontend in `Frontend/`.
+- FastAPI Phase 2 backend in `backend_v2/`.
+- PostgreSQL schema, seed scripts, pgAdmin setup, and SQL dump under `backend_v2/`.
+- Authentication routes for signup, login, and current-user lookup.
+- Product catalogue and barcode lookup routes.
+- OCR upload route and image upload/static-file support.
+- Inventory intake, list, edit, delete, and dashboard stats support.
+- Alerts and manual-review APIs for failed scans, missing expiry data, unknown barcodes, and human correction.
+- Frontend pages for landing, auth, dashboard, scan, inventory, alerts, and settings.
+- Frontend API service wired to `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_AUTH_URL`.
+- Legacy OCR pipeline with EasyOCR/OpenCV date extraction under `pipeline/` and `backend_v2/app/services/`.
+- Desktop and Streamlit demo tools under `demo/`.
+- Batch launch scripts for the legacy scanner flow.
 
-```
-Client HTTP Request
-        │
-        ▼
-  FastAPI Router  (/api/v1/*)
-        │
-        ▼
-  Service Layer   (business logic, aggregation, decisions)
-        │
-        ▼
-  SQLAlchemy ORM
-        │
-        ▼
-  PostgreSQL (prod) / SQLite (dev)
-```
+## Repository Structure
 
-**Key design decisions:**
-- Routes contain zero business logic — only HTTP concerns
-- All decisions live in `shelf_life_service.evaluate_shelf_life()`
-- Validation status derived from `confidence_score` in `validation_service`
-- Dashboard aggregations isolated in `dashboard_service`
-- All statuses are string constants from `utils/constants.py`
-
----
-
-## Folder Structure
-
-```
-backend/
-├── app/
-│   ├── main.py                      # FastAPI app, CORS, lifespan, routers
-│   ├── config.py                    # All settings loaded from .env
-│   ├── database.py                  # Engine, SessionLocal, Base, get_db
-│   ├── models/
-│   │   ├── __init__.py              # Registers all models on Base.metadata
-│   │   ├── product.py               # Product model
-│   │   ├── inventory.py             # InventoryItem model
-│   │   └── validation_record.py     # ValidationRecord model
-│   ├── schemas/
-│   │   ├── product_schema.py        # ProductCreate / Update / Response
-│   │   ├── inventory_schema.py      # InventoryIntakeRequest / Response / ListResponse
-│   │   ├── validation_schema.py     # ValidationCreate / Response
-│   │   └── dashboard_schema.py      # All dashboard response shapes
-│   ├── routes/
-│   │   ├── product_routes.py        # /api/v1/products
-│   │   ├── inventory_routes.py      # /api/v1/inventory
-│   │   ├── validation_routes.py     # /api/v1/validation
-│   │   └── dashboard_routes.py      # /api/v1/dashboard
-│   ├── services/
-│   │   ├── product_service.py       # Product CRUD
-│   │   ├── inventory_service.py     # Intake orchestration
-│   │   ├── shelf_life_service.py    # Pure decision engine
-│   │   ├── validation_service.py    # Validation record management
-│   │   └── dashboard_service.py     # All aggregation queries
-│   └── utils/
-│       ├── constants.py             # All status string literals
-│       ├── response.py              # success_response / error_response
-│       ├── exceptions.py            # All custom exception classes
-│       └── logger.py                # Structured application logger
-├── tests/
-│   ├── conftest.py                  # TestClient + in-memory SQLite fixture
-│   ├── test_products.py             # Phase 1.3 — 17 tests
-│   ├── test_inventory.py            # Phase 1.5 — 18 tests
-│   ├── test_validation.py           # Phase 1.6 — 13 tests
-│   ├── test_dashboard.py            # Phase 1.7 — 14 tests
-│   └── test_shelf_life_service.py   # Phase 1.4 — 14 tests
-├── .env.example
-├── requirements.txt
-└── README.md
+```text
+.
+|-- Frontend/                  Next.js 14 app, dashboard UI, auth pages, scanner UI
+|-- backend_v2/                Active FastAPI API, PostgreSQL models, routes, services
+|-- backend_v2/scripts/        Schema and seed utilities
+|-- backend_v2/dev_tools/      Webcam/OCR experiments and debugging tools
+|-- backend/                   Original Phase 1 FastAPI backend and tests
+|-- api/                       Lightweight legacy OCR API
+|-- pipeline/                  OCR/date parsing inference prototype
+|-- demo/                      Streamlit and desktop scanner prototype
+|-- tests/                     OCR pipeline test data and evaluation scripts
+|-- Start_All.bat              Legacy launcher for API + Streamlit + desktop scanner
+|-- Launch_Scanner.bat         Legacy desktop scanner launcher
 ```
 
----
+## Main Services And Ports
 
-## Setup Instructions
+| Service | Path | Default Port | Purpose |
+| --- | --- | ---: | --- |
+| Frontend | `Frontend/` | `3000` | User-facing Next.js app |
+| Active backend | `backend_v2/` | `8001` | Dashboard, auth, product, OCR, inventory, alerts, reviews |
+| PostgreSQL | `backend_v2/docker-compose.yml` | `5434` -> `5432` | Local database |
+| pgAdmin | `backend_v2/docker-compose.yml` | `5050` | Database browser |
+| Legacy OCR API | `api/main.py` | `8000` | Prototype image validation endpoint |
+| Legacy Streamlit dashboard | `demo/app.py` | `8501` | Prototype dashboard |
 
-### 1. Clone and enter the backend directory
+## Prerequisites
+
+- Python 3.11+ recommended.
+- Node.js 18+ recommended.
+- Docker Desktop for PostgreSQL and pgAdmin.
+- Git.
+- Optional: ngrok or Cloudflare Tunnel for public testing.
+- Optional: a webcam for live scanner demos.
+
+## Clone
 
 ```bash
-git clone <repo-url>
-cd AI-Powered-Expiry-Date-Validation/backend
+git clone https://github.com/Harish-0412/AI-Powered-Expiry-Date-Validation.git
+cd AI-Powered-Expiry-Date-Validation
 ```
 
-### 2. Create a virtual environment
+## Start The Active Full-Stack App
+
+Run these from separate terminals.
+
+### 1. Start PostgreSQL And pgAdmin
 
 ```bash
-python -m venv venv
-
-# Windows
-venv\Scripts\activate
-
-# macOS / Linux
-source venv/bin/activate
+cd backend_v2
+docker compose up -d
 ```
 
-### 3. Install dependencies
+Database defaults:
+
+```env
+POSTGRES_USER=expiry_user
+POSTGRES_PASSWORD=expiry_pass
+POSTGRES_DB=expiry_db
+POSTGRES_PORT=5434
+```
+
+pgAdmin:
+
+- URL: `http://localhost:5050`
+- Email: `admin@expiryvalidation.com`
+- Password: `admin123`
+
+### 2. Configure The Active Backend
+
+Create `backend_v2/.env`:
+
+```env
+DATABASE_URL=postgresql://expiry_user:expiry_pass@localhost:5434/expiry_db
+APP_ENV=development
+APP_VERSION=2.0.0
+SECRET_KEY=change_this_secret_key_phase2
+UPLOAD_DIR=./uploads
+ML_WEBHOOK_URL=
+```
+
+For a stronger local secret:
 
 ```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+### 3. Install And Start The Active Backend
+
+```bash
+cd backend_v2
+python -m venv .venv
+
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+
+# macOS/Linux
+source .venv/bin/activate
+
+pip install -r requirements.txt
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+```
+
+Backend URLs:
+
+- Health: `http://localhost:8001/health`
+- Swagger docs: `http://localhost:8001/docs`
+- Static uploads: `http://localhost:8001/static/uploads/...`
+
+### 4. Seed Demo Data
+
+The database schema is mounted automatically when the PostgreSQL container starts for the first time. If you need seed data, run one or more of the scripts from `backend_v2/`:
+
+```bash
+python scripts/create_tables.py
+python scripts/seed_products.py
+python scripts/seed_mock_data.py
+python scripts/seed_alerts_reviews.py
+```
+
+There are also SQL seed files in `backend_v2/scripts/`:
+
+```bash
+psql "postgresql://expiry_user:expiry_pass@localhost:5434/expiry_db" -f scripts/seed_all_tables.sql
+```
+
+### 5. Configure And Start The Frontend
+
+Create `Frontend/.env.local`:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8001/api/v1
+NEXT_PUBLIC_AUTH_URL=http://localhost:8001
+```
+
+Then start Next.js:
+
+```bash
+cd Frontend
+npm install
+npm run dev
+```
+
+Frontend URL:
+
+- App: `http://localhost:3000`
+
+## Start The Public Tunnel
+
+Use a tunnel when you want to test the app from another device, share a demo URL, or test camera access over HTTPS.
+
+### Option A: ngrok
+
+Tunnel the frontend:
+
+```bash
+ngrok http 3000
+```
+
+Tunnel the backend:
+
+```bash
+ngrok http 8001
+```
+
+If the backend tunnel URL is `https://your-backend.ngrok-free.app`, update `Frontend/.env.local`:
+
+```env
+NEXT_PUBLIC_API_URL=https://your-backend.ngrok-free.app/api/v1
+NEXT_PUBLIC_AUTH_URL=https://your-backend.ngrok-free.app
+```
+
+Restart the frontend after changing `.env.local`.
+
+### Option B: Cloudflare Tunnel
+
+Tunnel the frontend:
+
+```bash
+cloudflared tunnel --url http://localhost:3000
+```
+
+Tunnel the backend:
+
+```bash
+cloudflared tunnel --url http://localhost:8001
+```
+
+Use the generated backend URL in `Frontend/.env.local` the same way as the ngrok example.
+
+## Start The Legacy OCR Prototype
+
+The legacy flow is useful for testing the original OCR pipeline, Streamlit dashboard, and desktop scanner.
+
+Install root-level Python dependencies:
+
+```bash
+python -m venv .venv
+
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+
+# macOS/Linux
+source .venv/bin/activate
+
 pip install -r requirements.txt
 ```
 
-### 4. Configure environment
+Start everything on Windows:
+
+```bat
+Start_All.bat
+```
+
+This starts:
+
+- Legacy OCR API on `http://localhost:8000`
+- Streamlit dashboard on `http://localhost:8501`
+- Desktop scanner from `demo/desktop_app.py`
+
+Or start each service manually:
 
 ```bash
-cp .env.example .env
+python -m uvicorn api.main:app --host 0.0.0.0 --port 8000
+python -m streamlit run demo/app.py --server.port 8501
+python demo/desktop_app.py
 ```
 
-Edit `.env` — set at minimum:
+Legacy OCR endpoints:
 
-```env
-DATABASE_URL=sqlite:///./expiry_validation.db
-SECRET_KEY=<run: python -c "import secrets; print(secrets.token_hex(32))">
-APP_ENV=development
-```
+- `POST /validate`
+- `POST /validate/batch`
 
-For PostgreSQL:
+## Webcam And OCR Experiments
 
-```env
-DATABASE_URL=postgresql://user:password@localhost:5432/expiry_db
-```
-
-### 5. Run the server
+Extra scanner tools live in `backend_v2/dev_tools/`.
 
 ```bash
-uvicorn app.main:app --reload
+cd backend_v2
+python dev_tools/webcam_scanner.py
 ```
 
-- API: `http://localhost:8000`
-- Interactive docs: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
+Useful files:
 
-Tables are created automatically on first startup when `APP_ENV=development`.  
-For production: `alembic upgrade head`
+- `app/services/enhanced_preprocessing.py`
+- `app/services/standalone_date_extractor.py`
+- `app/services/enhanced_ocr_pipeline.py`
+- `app/services/paddle_ocr_service.py`
+- `dev_tools/test_ocr.py`
+- `dev_tools/test_combination_pipeline.py`
 
----
+Supported date extraction examples include:
 
-## Health Check
+- `DD/MM/YYYY`
+- `MM/DD/YYYY`
+- `YYYY-MM-DD`
+- `DD MMM YYYY`
+- `MMM DD YYYY`
+- short-year variants such as `DD/MM/YY`
 
-```http
-GET /health
+Recognized label terms include `MFG`, `MFD`, `PKD`, `PACKED`, `EXP`, `EXPIRY`, `BEST BEFORE`, `USE BY`, `BATCH`, and `LOT`.
+
+## Active Backend API Overview
+
+Base URL:
+
+```text
+http://localhost:8001
 ```
 
-```json
-{
-  "status": "healthy",
-  "database": "connected",
-  "version": "1.0.0",
-  "env": "development"
-}
-```
-
----
-
-## API Documentation
-
-All endpoints are prefixed `/api/v1/`.
-
-### Products — `/api/v1/products`
-
-#### POST /api/v1/products — Create product
-
-**Request**
-```json
-{
-  "name": "Milk Packet",
-  "sku": "MILK-500ML",
-  "barcode": "8901234567890",
-  "category": "Dairy"
-}
-```
-
-**Response 201**
-```json
-{
-  "success": true,
-  "message": "Product created successfully",
-  "data": {
-    "id": 1, "name": "Milk Packet", "sku": "MILK-500ML",
-    "barcode": "8901234567890", "category": "Dairy",
-    "image_url": null, "created_at": "...", "updated_at": "..."
-  }
-}
-```
-
-**Error 409**
-```json
-{"success": false, "message": "A product with this SKU already exists", "error_code": "DUPLICATE_SKU"}
-```
-
----
-
-#### GET /api/v1/products — List all products
-
-| Param | Default | Description |
-|-------|---------|-------------|
-| `skip` | 0 | Offset |
-| `limit` | 50 | Page size |
-
----
-
-#### GET /api/v1/products/{id} — Get by ID
-
-**Error 404**
-```json
-{"success": false, "message": "Product not found", "error_code": "PRODUCT_NOT_FOUND"}
-```
-
----
-
-#### GET /api/v1/products/barcode/{barcode} — Barcode lookup
-
-```http
-GET /api/v1/products/barcode/8901234567890
-```
-
----
-
-#### PUT /api/v1/products/{id} — Update product
-
-All fields optional. Only supplied fields are updated.
-
----
-
-#### DELETE /api/v1/products/{id} — Delete product
-
-**Response 200**
-```json
-{"success": true, "message": "Product deleted successfully", "data": null}
-```
-
----
-
-### Inventory — `/api/v1/inventory`
-
-#### POST /api/v1/inventory/intake — Intake a batch
-
-**Request**
-```json
-{
-  "barcode": "8901234567890",
-  "batch_number": "BATCH001",
-  "manufacturing_date": "2026-05-01",
-  "expiry_date": "2026-11-01"
-}
-```
-
-**Response 201 — ACCEPTED**
-```json
-{
-  "success": true,
-  "message": "Inventory item processed successfully",
-  "data": {
-    "id": 1, "product_id": 1, "batch_number": "BATCH001",
-    "manufacturing_date": "2026-05-01", "expiry_date": "2026-11-01",
-    "remaining_days": 161, "status": "ACCEPTED",
-    "decision_reason": "Product has sufficient shelf life.",
-    "created_at": "..."
-  }
-}
-```
-
-**Response 201 — REJECTED**
-```json
-{
-  "success": true,
-  "message": "Inventory item processed successfully",
-  "data": {"status": "REJECTED", "remaining_days": 5, ...}
-}
-```
-
-Decision rules:
-
-| Condition | Status |
-|-----------|--------|
-| `expiry_date` missing | `MANUAL_REVIEW` |
-| `expiry_date < manufacturing_date` | `INVALID_DATE` |
-| `expiry_date < today` | `REJECTED` |
-| `remaining_days < 30` | `REJECTED` |
-| `30 ≤ remaining_days ≤ 60` | `PRIORITY_SALE` |
-| `remaining_days > 60` | `ACCEPTED` |
-
----
-
-#### GET /api/v1/inventory — List all items
-
-Returns `{total, items[]}`.
-
-#### GET /api/v1/inventory/{id} — Get by ID
-
-#### GET /api/v1/inventory/status/{status} — Filter by status
-
-Valid values: `ACCEPTED`, `PRIORITY_SALE`, `REJECTED`, `MANUAL_REVIEW`, `INVALID_DATE`  
-Case-insensitive. Returns `{total, items[]}`.
-
----
-
-### Validation — `/api/v1/validation`
-
-#### POST /api/v1/validation/manual — Store validation record
-
-OCR integration point. The ML team will POST extracted data here.
-
-**Request**
-```json
-{
-  "inventory_item_id": 1,
-  "raw_text": "MFG 01/05/2026 EXP 01/11/2026",
-  "extracted_mfg_date": "2026-05-01",
-  "extracted_expiry_date": "2026-11-01",
-  "confidence_score": 0.98
-}
-```
-
-**Response 201**
-```json
-{
-  "success": true,
-  "message": "Validation record stored",
-  "data": {"validation_status": "VALID", "confidence_score": 0.98, ...}
-}
-```
-
-Validation status rules:
-
-| Condition | Status |
-|-----------|--------|
-| `extracted_expiry_date` missing | `MANUAL_REVIEW` |
-| `confidence_score` missing | `MANUAL_REVIEW` |
-| `confidence_score >= 0.80` | `VALID` |
-| `confidence_score < 0.80` | `LOW_CONFIDENCE` |
-
-#### GET /api/v1/validation/{inventory_item_id} — Get records for item
-
-Returns all validation records newest-first. Empty list if none exist.
-
----
-
-### Dashboard — `/api/v1/dashboard`
-
-#### GET /api/v1/dashboard/summary
-
-```json
-{
-  "success": true,
-  "message": "Dashboard summary retrieved",
-  "data": {
-    "total_products": 125,
-    "total_inventory_items": 2500,
-    "accepted_count": 1900,
-    "priority_sale_count": 300,
-    "rejected_count": 150,
-    "manual_review_count": 100,
-    "invalid_date_count": 50,
-    "valid_validation_count": 2100,
-    "low_confidence_count": 250
-  }
-}
-```
-
-#### GET /api/v1/dashboard/inventory-breakdown
-
-Counts per inventory decision status.
-
-#### GET /api/v1/dashboard/validation-breakdown
-
-Counts per validation status.
-
-#### GET /api/v1/dashboard/recent-inventory?limit=10
-
-Most recently created inventory items, newest first.
-
-#### GET /api/v1/dashboard/recent-validations?limit=10
-
-Most recently created validation records, newest first.
-
-#### GET /api/v1/dashboard/alerts
-
-All items needing attention (REJECTED, INVALID_DATE, MANUAL_REVIEW).
-
-```json
-{
-  "success": true,
-  "message": "Alerts retrieved",
-  "data": {"count": 32, "items": [...]}
-}
-```
-
----
-
-## Running Tests
+Important routes:
+
+| Area | Route |
+| --- | --- |
+| Health | `GET /health` |
+| Auth | `/auth/signup`, `/auth/login`, `/auth/me` |
+| OCR | `/api/v1/ocr/*` |
+| Product/barcode | `/api/v1/products/*` |
+| Inventory | `/api/v1/inventory/*` |
+| Alerts | `/api/v1/alerts/*` |
+| Reviews | `/api/v1/reviews/*` |
+| Scan sessions | `/api/v1/session/*` |
+| Scan pipeline | `/api/scan/*` |
+| Product lookup | `GET /api/v1/products/search` |
+| Product questions | `POST /api/v1/products/ask` |
+
+Open `http://localhost:8001/docs` for the exact request and response schemas generated by FastAPI.
+
+## Frontend Overview
+
+Important frontend paths:
+
+- `/` - landing page
+- `/login` - login
+- `/signup` - signup
+- `/dashboard` - dashboard home
+- `/dashboard/scan` - camera/image scan workflow
+- `/dashboard/inventory` - inventory list and edit workflow
+- `/dashboard/alerts` - alert and manual review workflow
+- `/dashboard/settings` - settings page
+
+Important frontend service files:
+
+- `Frontend/services/apiService.ts`
+- `Frontend/services/scanService.ts`
+- `Frontend/hooks/useCamera.ts`
+- `Frontend/hooks/useBarcodeScanner.ts`
+- `Frontend/hooks/useOCR.ts`
+
+## Testing
+
+Original backend tests:
 
 ```bash
-# From the backend/ directory
 cd backend
-
-# Run all 77 tests
+pip install -r requirements.txt
 pytest
-
-# Verbose output
-pytest -v
-
-# Specific file
-pytest tests/test_shelf_life_service.py -v
-
-# With coverage
-pip install pytest-cov
-pytest --cov=app --cov-report=term-missing
 ```
 
-**Expected output:**
+OCR pipeline tests:
+
+```bash
+pytest tests
 ```
-77 passed in ~2s
+
+Frontend build check:
+
+```bash
+cd Frontend
+npm run build
 ```
 
-Tests use an **isolated in-memory SQLite database** — no setup required, no data persists between runs.
+## Common Troubleshooting
 
----
+### Frontend cannot reach backend
 
-## Environment Variables
+Check that the backend is running on port `8001`, then confirm:
 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `DATABASE_URL` | Yes | `sqlite:///./expiry_validation.db` | SQLAlchemy connection string |
-| `SECRET_KEY` | Yes | — | JWT signing secret |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | No | `60` | JWT token lifetime |
-| `WARNING_DAYS` | No | `60` | Days threshold → PRIORITY_SALE |
-| `REJECT_DAYS` | No | `30` | Days threshold → REJECTED |
-| `APP_ENV` | No | `development` | `development` / `staging` / `production` |
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8001/api/v1
+NEXT_PUBLIC_AUTH_URL=http://localhost:8001
+```
 
----
+Restart `npm run dev` after changing `.env.local`.
 
-## Notes for Frontend & ML Teams
+### Database connection is unavailable
 
-**Frontend team:**
-- All endpoints at `/api/v1/*`
-- Consistent envelope: `{"success": bool, "message": str, "data": any}`
-- Errors in `detail.error_code` for machine-readable handling
-- Interactive docs: `GET /docs`
+Start Docker services:
 
-**ML / OCR team:**
-- Push extracted label data to `POST /api/v1/validation/manual`
-- Fields: `raw_text`, `extracted_mfg_date`, `extracted_expiry_date`, `confidence_score`
-- `validation_status` is derived automatically from `confidence_score`
-- No code changes needed — the endpoint contract is already defined
+```bash
+cd backend_v2
+docker compose up -d
+```
 
-**For production deployment:**
-- Set `APP_ENV=production` (disables auto `create_all`)
-- Run `alembic upgrade head` before starting
-- Replace `SECRET_KEY` default with a generated value
-- Restrict `allow_origins` in CORS middleware
+Then verify the backend `DATABASE_URL` uses port `5434` on the host:
+
+```env
+DATABASE_URL=postgresql://expiry_user:expiry_pass@localhost:5434/expiry_db
+```
+
+### Camera does not open
+
+- Close other apps using the webcam.
+- Allow camera permissions in the browser or OS.
+- Use HTTPS through ngrok or Cloudflare Tunnel when testing camera access on another device.
+
+### OCR accuracy is low
+
+- Improve lighting.
+- Avoid glare on packaging.
+- Hold the label steady and close to the camera.
+- Try the enhanced OCR scripts in `backend_v2/dev_tools/`.
+
+## Development Notes
+
+- Do not commit `.env`, `.env.local`, database files, uploads, virtual environments, `.next`, or `node_modules`.
+- `backend_v2` is the active API target for the frontend.
+- `api/`, `pipeline/`, and `demo/` remain useful for OCR experiments and legacy demos.
+- The project currently allows broad CORS in development. Lock this down before production deployment.
+- Replace default secrets before any hosted deployment.

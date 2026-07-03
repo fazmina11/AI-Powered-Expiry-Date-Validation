@@ -30,6 +30,8 @@ from app.routes.barcode import router as barcode_router
 from app.routes.inventory import router as inventory_router
 from app.routes.scan_session import router as scan_session_router
 from app.routes.scan import router as scan_router
+from app.routes.alerts import router as alerts_router
+from app.routes.reviews import router as reviews_router
 from app.routes import product_lookup_routes, product_question_routes
 
 @asynccontextmanager
@@ -64,6 +66,8 @@ app.include_router(auth_router)
 app.include_router(ocr_router, prefix="/api/v1/ocr", tags=["OCR"])
 app.include_router(barcode_router, prefix="/api/v1/products", tags=["Products"])
 app.include_router(inventory_router, prefix="/api/v1/inventory", tags=["Inventory"])
+app.include_router(alerts_router, prefix="/api/v1/alerts", tags=["Alerts"])
+app.include_router(reviews_router, prefix="/api/v1/reviews", tags=["Reviews"])
 app.include_router(scan_session_router, prefix="/api/v1/session", tags=["Session"])
 app.include_router(scan_router, prefix="/api/scan", tags=["Scan"])
 app.include_router(product_lookup_routes.router, prefix="/api/v1", tags=["Product Lookup"])
