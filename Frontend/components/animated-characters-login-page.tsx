@@ -293,7 +293,7 @@ export function AnimatedCharactersLoginPage() {
     setIsLoading(true);
 
     try {
-      const res = await fetch("http://localhost:8000/auth/login", {
+      const res = await fetch("http://localhost:8001/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -316,14 +316,14 @@ export function AnimatedCharactersLoginPage() {
       const token = data.access_token;
       if (token) {
         localStorage.setItem("auth_token", token);
-        const info = await fetch("http://localhost:8000/auth/me", {
+        const info = await fetch("http://localhost:8001/auth/me", {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (info.ok) {
           const user = await info.json();
           localStorage.setItem("auth_user_name", user.name || "");
         }
-        window.location.href = "/";
+        window.location.href = "/dashboard";
       }
     } catch (err) {
       setError("Network error");

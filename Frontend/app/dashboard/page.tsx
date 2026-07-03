@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
-import { productApi, inventoryApi, Product, ProductCreate, ProductUpdate, InventoryItem } from "@/lib/api";
+import { productApi, inventoryApi, statsApi, Product, ProductCreate, ProductUpdate, InventoryItem, DashboardStats } from "@/services/apiService";
 
 // --- Components ---
 
@@ -324,11 +324,15 @@ export default function DashboardPage() {
   // Data states
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
-  const [inventoryStats, setInventoryStats] = useState({
-    totalProducts: 0,
-    lowStock: 0,
-    expiringSoon: 0,
-    validatedToday: 0,
+  const [inventoryStats, setInventoryStats] = useState<DashboardStats>({
+    total_products: 0,
+    total_inventory: 0,
+    expiring_soon: 0,
+    expired: 0,
+    accepted: 0,
+    rejected: 0,
+    manual_review: 0,
+    validated_today: 0,
   });
 
   // Modal states
@@ -353,15 +357,12 @@ export default function DashboardPage() {
   const fetchProducts = async () => {
     try {
       setIsLoadingProducts(true);
-      const data = await productApi.getAll();
+      const [data, stats] = await Promise.all([
+        productApi.getAll(),
+        statsApi.get().catch(() => null),
+      ]);
       setProducts(data);
-      // Mock stats based on products
-      setInventoryStats({
-        totalProducts: data.length,
-        lowStock: Math.floor(Math.random() * 20) + 5,
-        expiringSoon: Math.floor(Math.random() * 15) + 3,
-        validatedToday: Math.floor(Math.random() * 100) + 20,
-      });
+      if (stats) setInventoryStats(stats);
     } catch (error) {
       console.error("Failed to fetch products:", error);
     } finally {
@@ -606,35 +607,35 @@ export default function DashboardPage() {
                 {[
                   {
                     title: "Total Products",
-                    value: inventoryStats.totalProducts,
-                    change: "+12.5%",
+                    value: inventoryStats.total_products,
+                    change: `${inventoryStats.total_inventory} in inventory`,
                     isPositive: true,
                     icon: Package,
                     color: "bg-blue-500",
                   },
                   {
-                    title: "Low Stock",
-                    value: inventoryStats.lowStock,
-                    change: "-5.2%",
-                    isPositive: true,
+                    title: "Expiring Soon",
+                    value: inventoryStats.expiring_soon,
+                    change: `${inventoryStats.expired} expired`,
+                    isPositive: inventoryStats.expiring_soon === 0,
                     icon: AlertTriangle,
                     color: "bg-amber-500",
                   },
                   {
-                    title: "Expiring Soon",
-                    value: inventoryStats.expiringSoon,
-                    change: "+2.1%",
-                    isPositive: false,
-                    icon: Clock,
-                    color: "bg-red-500",
-                  },
-                  {
-                    title: "Validated Today",
-                    value: inventoryStats.validatedToday,
-                    change: "+18.3%",
+                    title: "Accepted",
+                    value: inventoryStats.accepted,
+                    change: `${inventoryStats.rejected} rejected`,
                     isPositive: true,
                     icon: CheckCircle2,
                     color: "bg-green-500",
+                  },
+                  {
+                    title: "Validated Today",
+                    value: inventoryStats.validated_today,
+                    change: `${inventoryStats.manual_review} need review`,
+                    isPositive: true,
+                    icon: Clock,
+                    color: "bg-purple-500",
                   },
                 ].map((stat, index) => (
                   <div

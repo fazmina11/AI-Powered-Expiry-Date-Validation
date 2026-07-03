@@ -14,13 +14,19 @@ export default function SignupPage() {
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [error, setError] = useState("")
   const { signup, isLoading } = useAuth()
   const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    await signup(name, email, password)
-    router.push("/dashboard")
+    setError("")
+    try {
+      await signup(name, email, password)
+      router.push("/dashboard")
+    } catch (err) {
+      setError((err as Error).message || "Signup failed")
+    }
   }
 
   return (
@@ -74,6 +80,11 @@ export default function SignupPage() {
                     className="bg-white/10 border-white/20 text-white placeholder-white/50"
                   />
                 </div>
+                {error && (
+                  <div className="text-sm text-red-400 bg-red-950/40 border border-red-500/30 rounded-xl p-3">
+                    {error}
+                  </div>
+                )}
                 <Button
                   type="submit"
                   className="w-full bg-white text-black hover:bg-gray-100"

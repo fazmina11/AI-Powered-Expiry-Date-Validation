@@ -1,6 +1,7 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react"
+import { authApi } from "@/services/apiService"
 
 interface User {
   id: string
@@ -22,10 +23,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
+  // Restore user from localStorage on mount
   useEffect(() => {
     const savedUser = localStorage.getItem("user")
-    if (savedUser) {
-      setUser(JSON.parse(savedUser))
+    const savedToken = localStorage.getItem("auth_token")
+    if (savedUser && savedToken) {
+      try {
+        setUser(JSON.parse(savedUser))
+      } catch {
+        localStorage.removeItem("user")
+      }
     }
     setIsLoading(false)
   }, [])
@@ -33,13 +40,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string) => {
     setIsLoading(true)
     try {
-      const mockUser = {
-        id: "1",
-        email,
-        name: email.split("@")[0],
-      }
-      setUser(mockUser)
-      localStorage.setItem("user", JSON.stringify(mockUser))
+      const data = await authApi.login(email, password)
+      localStorage.setItem("auth_token", data.access_token)
+
+      const me = await authApi.me(data.access_token)
+      const authUser: User = { id: me.email, email: me.email, name: me.name }
+      setUser(authUser)
+      localStorage.setItem("user", JSON.stringify(authUser))
     } finally {
       setIsLoading(false)
     }
@@ -48,13 +55,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signup = async (name: string, email: string, password: string) => {
     setIsLoading(true)
     try {
-      const mockUser = {
-        id: "1",
-        email,
-        name,
-      }
-      setUser(mockUser)
-      localStorage.setItem("user", JSON.stringify(mockUser))
+      const data = await authApi.signup(name, email, password)
+      localStorage.setItem("auth_token", data.access_token)
+
+      const me = await authApi.me(data.access_token)
+      const authUser: User = { id: me.email, email: me.email, name: me.name }
+      setUser(authUser)
+      localStorage.setItem("user", JSON.stringify(authUser))
     } finally {
       setIsLoading(false)
     }
@@ -63,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     setUser(null)
     localStorage.removeItem("user")
+    localStorage.removeItem("auth_token")
   }
 
   return (
