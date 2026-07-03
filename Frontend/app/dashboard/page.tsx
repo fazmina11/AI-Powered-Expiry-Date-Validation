@@ -317,7 +317,7 @@ const ProductDetail = ({
 // --- Main Dashboard Page ---
 
 export default function DashboardPage() {
-  const { user, logout } = useAuth();
+  const { user, isLoading, logout } = useAuth();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"inventory" | "intelligence">("inventory");
 
@@ -347,12 +347,16 @@ export default function DashboardPage() {
 
   // Fetch products on load
   useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+
     if (!user) {
       router.push("/login");
       return;
     }
     fetchProducts();
-  }, [user, router]);
+  }, [user, isLoading, router]);
 
   const fetchProducts = async () => {
     try {
@@ -459,7 +463,7 @@ export default function DashboardPage() {
     }
   };
 
-  if (!user) {
+  if (isLoading || !user) {
     return null;
   }
 

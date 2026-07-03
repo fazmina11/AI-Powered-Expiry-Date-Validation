@@ -1,18 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useAuth } from "@/contexts/AuthContext"
 
 export default function AuthWelcome() {
-  const [name, setName] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const storedName = localStorage.getItem("auth_user_name")
-      if (storedName) {
-        setName(storedName)
-      }
-    }
-  }, [])
+  const { user } = useAuth()
+  const name = user?.name?.trim() || user?.email
 
   if (!name) return null
 

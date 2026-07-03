@@ -12,10 +12,28 @@ from app.schemas.validation_schema import ValidationResult
 from app.schemas.alert_schema import AlertResult
 from app.services.barcode_service import BarcodeService
 from app.services.barcode_intelligence_service import BarcodeIntelligenceService
-from app.services.product_lookup_service import ProductLookupService
+from app.services.product_lookup_service import search_product
+from app.database import SessionLocal
+
+class ProductLookupService:
+    def lookup_product(self, barcode: str):
+        db = SessionLocal()
+        try:
+            res = search_product(db=db, query=barcode)
+            if res.get("status") == "FOUND":
+                class ProductData: pass
+                prod = ProductData()
+                prod.found = True
+                for k, v in res.get("product", {}).items():
+                    setattr(prod, k, v)
+                return prod
+            return None
+        finally:
+            db.close()
+
 from app.services.paddle_ocr_service import extract_text
 from app.services.product_intelligence_service import ProductIntelligenceService
-from app.services.validation_service import ValidationService
+from app.services.scan_validation_service import ValidationService
 from app.services.date_extraction_service import extract_fields
 from app.services.alert_service import AlertService
 from app.services.vision_llm_service import (
@@ -34,6 +52,7 @@ class PipelineResult(ProductIntelligence):
     total_time: float = 0.0
     reject_reason: Optional[str] = None
     exp_computed: bool = False
+    ocr_blocks: Optional[Dict[str, Any]] = None
 
 
 class ScanPipelineService:
@@ -53,6 +72,7 @@ class ScanPipelineService:
         barcode_data = None
         product_lookup = None
         ocr_data = None
+        ocr_blocks = None
 
         # Determine image source
         image_path = None
@@ -275,6 +295,13 @@ class ScanPipelineService:
                 local_ocr = None
                 try:
                     local_ocr = extract_text(image_path)
+                    if local_ocr and "blocks" in local_ocr:
+                        h_img, w_img = frame.shape[:2] if frame is not None else (0, 0)
+                        ocr_blocks = {
+                            "width": w_img,
+                            "height": h_img,
+                            "blocks": local_ocr["blocks"]
+                        }
                     log.info("[Pipeline] Stage 4A: PaddleOCR done. lines=%s conf=%.2f",
                              local_ocr.get("line_count", 0), local_ocr.get("confidence", 0))
                     print(f"[Pipeline] Stage 4A OK: lines={local_ocr.get('line_count',0)} "
@@ -538,7 +565,8 @@ class ScanPipelineService:
             status=status,
             execution_times=execution_times,
             total_time=total_time,
-            exp_computed=computed_flag
+            exp_computed=computed_flag,
+            ocr_blocks=ocr_blocks
         )
 
         log.info("[Pipeline] === COMPLETE: status=%s, total_time=%.2fs, computed=%s ===", status, total_time, computed_flag)

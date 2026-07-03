@@ -10,82 +10,69 @@ interface BarcodeScannerOverlayProps {
 
 export function BarcodeScannerOverlay({ scanState, detectedCode }: BarcodeScannerOverlayProps) {
   return (
-    <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
-      {/* Scanning viewfinder */}
+    <div className="absolute inset-0 pointer-events-none">
+      {/* Full viewport border glow when product is locked / detected */}
       <AnimatePresence>
-        {scanState === "scanning" && (
+        {scanState === "found" ? (
           <motion.div
-            key="viewfinder"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
+            key="viewport-lock"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="relative w-3/4 max-w-xs h-28 border-2 border-blue-400/60 rounded-xl"
+            className="absolute inset-0 border-4 border-emerald-500/80 shadow-[inset_0_0_20px_rgba(16,185,129,0.4)] transition-all duration-300"
           >
-            {/* Corner decorations */}
-            <span className="absolute -top-0.5 -left-0.5 w-5 h-5 border-t-2 border-l-2 border-blue-400 rounded-tl-lg" />
-            <span className="absolute -top-0.5 -right-0.5 w-5 h-5 border-t-2 border-r-2 border-blue-400 rounded-tr-lg" />
-            <span className="absolute -bottom-0.5 -left-0.5 w-5 h-5 border-b-2 border-l-2 border-blue-400 rounded-bl-lg" />
-            <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 border-b-2 border-r-2 border-blue-400 rounded-br-lg" />
-
-            {/* Scan line */}
-            <motion.div
-              className="absolute left-2 right-2 h-0.5 bg-blue-400/80 shadow-[0_0_8px_2px_rgba(59,130,246,0.7)]"
-              animate={{ top: ["10%", "85%", "10%"] }}
-              transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-            />
+            {/* Pulsing crosshairs or brackets around viewport to signify locking */}
+            <div className="absolute top-4 left-4 w-8 h-8 border-t-4 border-l-4 border-emerald-400" />
+            <div className="absolute top-4 right-4 w-8 h-8 border-t-4 border-r-4 border-emerald-400" />
+            <div className="absolute bottom-4 left-4 w-8 h-8 border-b-4 border-l-4 border-emerald-400" />
+            <div className="absolute bottom-4 right-4 w-8 h-8 border-b-4 border-r-4 border-emerald-400" />
+          </motion.div>
+        ) : (
+          /* Large product guide brackets when scanning */
+          <motion.div
+            key="product-guide"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-6 sm:inset-10 border-2 border-dashed border-blue-500/15 rounded-2xl flex items-center justify-center"
+          >
+            {/* Elegant corner brackets for full product package */}
+            <span className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-blue-500 rounded-tl-xl" />
+            <span className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-blue-500 rounded-tr-xl" />
+            <span className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-blue-500 rounded-bl-xl" />
+            <span className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-blue-500 rounded-br-xl" />
+            
+            {/* Subtle central target guide */}
+            <div className="size-4 border border-blue-500/10 rounded-full animate-pulse" />
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Detection pulse */}
-      <AnimatePresence>
-        {scanState === "found" && (
-          <motion.div
-            key="found"
-            initial={{ scale: 0.5, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="flex flex-col items-center gap-2"
-          >
-            <motion.div
-              className="size-16 rounded-full bg-emerald-500/20 border-2 border-emerald-400 flex items-center justify-center"
-              animate={{ scale: [1, 1.15, 1] }}
-              transition={{ duration: 0.4 }}
-            >
-              <span className="text-emerald-400 text-2xl">✓</span>
-            </motion.div>
-            {detectedCode && (
-              <span className="bg-black/70 text-white text-xs font-mono px-3 py-1 rounded-full">
-                {detectedCode}
-              </span>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Status label */}
-      <div className="absolute bottom-3 left-0 right-0 flex justify-center">
+      {/* Dynamic Status labels at the bottom */}
+      <div className="absolute bottom-4 left-0 right-0 flex justify-center">
         <AnimatePresence mode="wait">
           {scanState === "scanning" && (
             <motion.span
-              key="s"
-              initial={{ opacity: 0, y: 4 }}
+              key="scanning-state"
+              initial={{ opacity: 0, y: 5 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              className="bg-black/60 text-blue-300 text-xs font-medium px-3 py-1 rounded-full backdrop-blur-sm"
+              exit={{ opacity: 0, y: -5 }}
+              className="bg-black/75 text-blue-300 text-[11px] font-semibold tracking-wide uppercase px-4 py-1.5 rounded-full border border-blue-900/30 backdrop-blur flex items-center gap-2"
             >
-              Detecting barcode...
+              <span className="size-1.5 rounded-full bg-blue-400 animate-ping" />
+              Align product label details
             </motion.span>
           )}
           {scanState === "found" && (
             <motion.span
-              key="f"
-              initial={{ opacity: 0, y: 4 }}
+              key="found-state"
+              initial={{ opacity: 0, y: 5 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              className="bg-emerald-900/80 text-emerald-300 text-xs font-medium px-3 py-1 rounded-full"
+              exit={{ opacity: 0, y: -5 }}
+              className="bg-emerald-950/90 text-emerald-300 text-[11px] font-semibold tracking-wide uppercase px-4 py-1.5 rounded-full border border-emerald-900/60 backdrop-blur flex items-center gap-2"
             >
-              Barcode detected!
+              <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Product Locked - Auto Capturing
             </motion.span>
           )}
         </AnimatePresence>

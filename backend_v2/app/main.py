@@ -6,9 +6,11 @@ This file establishes the app, health check, and DB connectivity probe.
 """
 
 from contextlib import asynccontextmanager
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import check_db_connection
@@ -23,7 +25,11 @@ from app.models import (  # noqa: F401
     UnknownProductRequest, ProductQuestionLog, StorageContext, MLPrediction,
 )
 from app.routes.auth import router as auth_router
-from app.routes.api import router as api_router
+from app.routes.ocr import router as ocr_router
+from app.routes.barcode import router as barcode_router
+from app.routes.inventory import router as inventory_router
+from app.routes.scan_session import router as scan_session_router
+from app.routes.scan import router as scan_router
 from app.routes import product_lookup_routes, product_question_routes
 
 @asynccontextmanager
@@ -49,9 +55,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount static files for uploads
+os.makedirs("uploads", exist_ok=True)
+app.mount("/static/uploads", StaticFiles(directory="uploads"), name="uploads")
+
 # Register routers
 app.include_router(auth_router)
-app.include_router(api_router, prefix="/api/v1")
+app.include_router(ocr_router, prefix="/api/v1/ocr", tags=["OCR"])
+app.include_router(barcode_router, prefix="/api/v1/products", tags=["Products"])
+app.include_router(inventory_router, prefix="/api/v1/inventory", tags=["Inventory"])
+app.include_router(scan_session_router, prefix="/api/v1/session", tags=["Session"])
+app.include_router(scan_router, prefix="/api/scan", tags=["Scan"])
 app.include_router(product_lookup_routes.router, prefix="/api/v1", tags=["Product Lookup"])
 app.include_router(product_question_routes.router, prefix="/api/v1", tags=["Product Questions"])
 

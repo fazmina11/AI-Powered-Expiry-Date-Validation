@@ -67,11 +67,30 @@ def extract_text(image_path: str) -> dict:
 
     clean_texts: list[str] = []
     clean_scores: list[float] = []
+    blocks: list[dict] = []
 
     for box, text, confidence in results:
         if text.strip():
             clean_texts.append(text.strip())
             clean_scores.append(float(confidence))
+            
+            # Extract axis-aligned bounding box coordinates
+            try:
+                x_coords = [float(pt[0]) for pt in box]
+                y_coords = [float(pt[1]) for pt in box]
+                x_min, x_max = min(x_coords), max(x_coords)
+                y_min, y_max = min(y_coords), max(y_coords)
+            except Exception:
+                x_min, y_min, x_max, y_max = 0.0, 0.0, 0.0, 0.0
+
+            blocks.append({
+                "text": text.strip(),
+                "confidence": round(float(confidence), 4),
+                "x_min": round(x_min, 1),
+                "y_min": round(y_min, 1),
+                "x_max": round(x_max, 1),
+                "y_max": round(y_max, 1)
+            })
 
     raw_text   = "\n".join(clean_texts)
     confidence = round(sum(clean_scores) / len(clean_scores), 4) if clean_scores else 0.0
@@ -81,4 +100,5 @@ def extract_text(image_path: str) -> dict:
         "confidence": confidence,
         "line_count": len(clean_texts),
         "image_path": image_path,
+        "blocks":     blocks,
     }

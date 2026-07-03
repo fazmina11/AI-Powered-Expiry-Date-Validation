@@ -2,12 +2,10 @@
 
 import { useEffect, useRef } from "react"
 import { ArrowRight } from "lucide-react"
-import { useAuth } from "@/contexts/AuthContext"
 import { useRouter } from "next/navigation"
 
 export function CTASection() {
   const sectionRef = useRef<HTMLElement>(null)
-  const { user } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
@@ -51,7 +49,7 @@ export function CTASection() {
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-6">
             <button
-              onClick={() => router.push(user ? "/dashboard" : "/login")}
+              onClick={() => router.push("/dashboard")}
               className="group inline-flex items-center gap-3 px-8 py-4 md:px-12 md:py-6 bg-gradient-to-r from-white to-slate-100 text-slate-900 rounded-full font-semibold text-base md:text-lg hover:from-slate-50 hover:to-slate-200 transition-all duration-300 hover:scale-105 shadow-2xl"
             >
               Get Started

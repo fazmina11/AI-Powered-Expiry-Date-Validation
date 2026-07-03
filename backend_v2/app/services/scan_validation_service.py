@@ -161,7 +161,16 @@ class ValidationService:
         status = ValidationStatus.ERROR if score < 75 else ValidationStatus.WARNING
         return CategoryValidation(status=status, score=score, message=", ".join(messages))
 
-    def _parse_date(self, date_str: str) -> Optional[datetime]:
+    def _parse_date(self, date_str: Any) -> Optional[datetime]:
+        if not date_str:
+            return None
+        if isinstance(date_str, datetime):
+            return date_str
+        import datetime as dt_pkg
+        if isinstance(date_str, dt_pkg.date):
+            return datetime.combine(date_str, datetime.min.time())
+            
+        date_str = str(date_str)
         formats = ["%Y-%m-%d", "%Y/%m/%d", "%d-%m-%Y", "%d/%m/%Y", "%Y-%m", "%b %Y", "%m/%y"]
         for fmt in formats:
             try:

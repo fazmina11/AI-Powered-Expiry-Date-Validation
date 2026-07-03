@@ -58,26 +58,6 @@ class StorageLocation(Base):
     movements_to = relationship("InventoryMovement", foreign_keys="InventoryMovement.to_location_id", back_populates="to_location")
 
 
-class ScanSession(Base):
-    __tablename__ = "scan_sessions"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    session_status = Column(String(50), nullable=False, default="IN_PROGRESS", index=True)
-    operator_name = Column(String(150), nullable=True)
-    device_id = Column(String(150), nullable=True)
-    notes = Column(Text, nullable=True)
-    started_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    completed_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-
-    barcode_scans = relationship("BarcodeScan", back_populates="scan_session")
-    product_images = relationship("ProductImage", back_populates="scan_session")
-    ocr_results = relationship("OCRResult", back_populates="scan_session")
-    inventory_items = relationship("InventoryItem", back_populates="scan_session")
-    manual_reviews = relationship("ManualReview", back_populates="scan_session")
-    scan_alerts = relationship("ScanAlert", back_populates="scan_session")
-
 
 class InventoryMovement(Base):
     __tablename__ = "inventory_movements"
@@ -96,24 +76,6 @@ class InventoryMovement(Base):
     from_location = relationship("StorageLocation", foreign_keys=[from_location_id], back_populates="movements_from")
     to_location = relationship("StorageLocation", foreign_keys=[to_location_id], back_populates="movements_to")
 
-
-class ScanAlert(Base):
-    __tablename__ = "scan_alerts"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    scan_session_id = Column(UUID(as_uuid=True), ForeignKey("scan_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
-    inventory_item_id = Column(UUID(as_uuid=True), ForeignKey("inventory_items.id", ondelete="SET NULL"), nullable=True, index=True)
-    alert_type = Column(String(100), nullable=False, index=True)
-    severity = Column(String(50), nullable=False, default="WARNING", index=True)
-    field_name = Column(String(100), nullable=True)
-    message = Column(Text, nullable=False)
-    is_resolved = Column(Boolean, nullable=False, default=False, index=True)
-    resolved_by = Column(String(150), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    resolved_at = Column(DateTime(timezone=True), nullable=True)
-
-    scan_session = relationship("ScanSession", back_populates="scan_alerts")
-    inventory_item = relationship("InventoryItem", back_populates="scan_alerts")
 
 
 class ExternalProductEnrichmentLog(Base):

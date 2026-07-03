@@ -273,6 +273,59 @@ def _parse_text_via_openai(raw_text: str, api_key: str) -> StructuredExtractionR
     return StructuredExtractionResult.model_validate(data)
 
 
+def _parse_text_via_huggingface(raw_text: str, api_key: str) -> StructuredExtractionResult:
+    """Send raw OCR text to Hugging Face Inference API to get structured JSON fields."""
+    import requests
+    import json
+    
+    model_id = "Qwen/Qwen2.5-7B-Instruct"
+    api_url = f"https://api-inference.huggingface.co/models/{model_id}"
+    headers = {"Authorization": f"Bearer {api_key}"}
+    
+    prompt = (
+        f"<|im_start|>system\nYou are an expert assistant that extracts structured fields from raw OCR text. "
+        f"You must return ONLY a JSON object in this exact schema, with no markdown block, no explanation:\n"
+        f"{{\n"
+        f"  \"mfg_date\": \"YYYY-MM-DD or null\",\n"
+        f"  \"expiry_date\": \"YYYY-MM-DD or null\",\n"
+        f"  \"batch_number\": \"string or null\",\n"
+        f"  \"mrp\": 0.0 or null,\n"
+        f"  \"weight\": \"string or null\",\n"
+        f"  \"product_name\": \"string or null\",\n"
+        f"  \"category\": \"string or null\",\n"
+        f"  \"ingredients\": \"string or null\",\n"
+        f"  \"confidence_score\": 0.9\n"
+        f"}}\n"
+        f"Convert dates to YYYY-MM-DD. Dates are DD/MM/YY or DD/MM/YYYY. For example, '09/03/26' is 2026-03-09.<|im_end|>\n"
+        f"<|im_start|>user\nRAW OCR TEXT:\n{raw_text}<|im_end|>\n"
+        f"<|im_start|>assistant\n"
+    )
+    
+    payload = {
+        "inputs": prompt,
+        "parameters": {
+            "max_new_tokens": 512,
+            "temperature": 0.1
+        }
+    }
+    
+    response = requests.post(api_url, headers=headers, json=payload, timeout=15)
+    if response.status_code != 200:
+        raise RuntimeError(f"HuggingFace API failed: {response.text}")
+        
+    res_data = response.json()
+    generated_text = ""
+    if isinstance(res_data, list) and len(res_data) > 0:
+        generated_text = res_data[0].get("generated_text", "")
+    elif isinstance(res_data, dict):
+        generated_text = res_data.get("generated_text", "")
+        
+    # Clean up markdown code blocks if any
+    cleaned = generated_text.strip().replace("```json", "").replace("```", "").strip()
+    data = json.loads(cleaned)
+    return StructuredExtractionResult.model_validate(data)
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def extract_structured_fields_via_llm(
@@ -337,8 +390,9 @@ def extract_structured_fields_from_text(
 
     gemini_key = os.environ.get("GEMINI_API_KEY")
     openai_key = os.environ.get("OPENAI_API_KEY")
+    hf_key = os.environ.get("HUGGINGFACE_API_KEY")
 
-    if not gemini_key and not openai_key:
+    if not gemini_key and not openai_key and not hf_key:
         logger.info("[TextLLM] No API keys configured. Skipping text LLM.")
         return None
 
@@ -349,6 +403,9 @@ def extract_structured_fields_from_text(
         elif openai_key:
             logger.info("[TextLLM] Parsing OCR text via OpenAI text API...")
             return _parse_text_via_openai(raw_text, openai_key)
+        elif hf_key:
+            logger.info("[TextLLM] Parsing OCR text via Hugging Face Inference API...")
+            return _parse_text_via_huggingface(raw_text, hf_key)
     except Exception as exc:
         logger.error("[TextLLM] Text LLM parse failed: %s", exc, exc_info=True)
         return None

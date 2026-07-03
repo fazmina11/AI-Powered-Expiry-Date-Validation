@@ -16,15 +16,15 @@ from app.models.operations import (
     Supplier,
     Warehouse,
     StorageLocation,
-    ScanSession,
     InventoryMovement,
-    ScanAlert,
     ExternalProductEnrichmentLog,
 )
+from app.models.scan_session import ScanSession
+from app.models.scan_alert import ScanAlert
 from app.models.barcode_scan import BarcodeScan
 from app.models.product_image import ProductImage
 from app.models.ocr_result import OCRResult
-from app.models.inventory_item import InventoryItem
+from app.models.inventory import InventoryItem
 from app.models.storage_context import StorageContext
 from app.models.ml_prediction import MLPrediction
 from app.models.manual_review import ManualReview

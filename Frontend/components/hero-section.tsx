@@ -2,7 +2,6 @@
 
 import { Button } from "@/components/ui/button"
 import RotatingText from "./RotatingText"
-import { useAuth } from "@/contexts/AuthContext"
 import { useRouter } from "next/navigation"
 
 const ArrowRight = () => (
@@ -33,7 +32,6 @@ const Play = () => (
 )
 
 export function HeroSection() {
-  const { user } = useAuth()
   const router = useRouter()
   return (
     <section className="min-h-screen flex items-center justify-center px-4 py-20 relative">
@@ -75,7 +73,7 @@ export function HeroSection() {
           <Button
             size="lg"
             className="bg-white text-black rounded-full px-8 py-4 text-lg font-medium transition-all duration-300 hover:bg-gray-50 hover:scale-105 hover:shadow-lg group cursor-pointer relative overflow-hidden"
-            onClick={() => router.push(user ? "/dashboard" : "/login")}
+            onClick={() => router.push("/dashboard")}
           >
             Get Started
             <ArrowRight />

@@ -18,10 +18,10 @@ export function GlassmorphismNav() {
   const [isOpen, setIsOpen] = useState(false)
   const [isVisible, setIsVisible] = useState(true)
   const [hasLoaded, setHasLoaded] = useState(false)
-  const [userName, setUserName] = useState<string | null>(null)
   const lastScrollY = useRef(0)
   const { user, logout } = useAuth()
   const router = useRouter()
+  const userDisplayName = user?.name?.trim() || user?.email
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -32,22 +32,13 @@ export function GlassmorphismNav() {
       if (typeof window !== "undefined") {
         const currentScrollY = window.scrollY
 
-        console.log("[v0] Scroll event - currentScrollY:", currentScrollY, "lastScrollY:", lastScrollY.current)
-
-        // Only hide/show after scrolling past 50px to avoid flickering at top
         if (currentScrollY > 50) {
           if (currentScrollY > lastScrollY.current && currentScrollY - lastScrollY.current > 5) {
-            // Scrolling down - hide navbar
-            console.log("[v0] Hiding navbar - scrolling down")
             setIsVisible(false)
           } else if (lastScrollY.current - currentScrollY > 5) {
-            // Scrolling up - show navbar
-            console.log("[v0] Showing navbar - scrolling up")
             setIsVisible(true)
           }
         } else {
-          // Always show navbar when near top
-          console.log("[v0] Showing navbar - near top")
           setIsVisible(true)
         }
 
@@ -57,29 +48,25 @@ export function GlassmorphismNav() {
 
     if (typeof window !== "undefined") {
       window.addEventListener("scroll", controlNavbar, { passive: true })
-      console.log("[v0] Scroll listener added")
 
       return () => {
         window.removeEventListener("scroll", controlNavbar)
         clearTimeout(timer)
-        console.log("[v0] Scroll listener removed")
       }
     }
 
     return () => clearTimeout(timer)
-  }, []) // Removed lastScrollY dependency to prevent infinite re-renders
-
-  useEffect(() => {
-    // load user name from localStorage to show welcome
-    if (typeof window !== "undefined") {
-      const name = localStorage.getItem("auth_user_name")
-      if (name) setUserName(name)
-    }
   }, [])
 
-  const scrollToTop = () => {
-    console.log("[v0] Scrolling to top")
-    window.scrollTo({ top: 0, behavior: "smooth" })
+  const goToDashboard = () => {
+    router.push("/dashboard")
+    setIsOpen(false)
+  }
+
+  const handleLogout = () => {
+    logout()
+    router.push("/")
+    setIsOpen(false)
   }
 
   const scrollToSection = (href: string) => {
@@ -87,28 +74,18 @@ export function GlassmorphismNav() {
       return
     }
 
-    console.log("[v0] Attempting to scroll to:", href)
     const element = document.querySelector(href)
     if (element) {
-      console.log("[v0] Found element:", element)
-
       const rect = element.getBoundingClientRect()
       const currentScrollY = window.pageYOffset || document.documentElement.scrollTop
       const elementAbsoluteTop = rect.top + currentScrollY
       const navbarHeight = 100
       const targetPosition = Math.max(0, elementAbsoluteTop - navbarHeight)
 
-      console.log("[v0] Element rect.top:", rect.top)
-      console.log("[v0] Current scroll position:", currentScrollY)
-      console.log("[v0] Element absolute top:", elementAbsoluteTop)
-      console.log("[v0] Target scroll position:", targetPosition)
-
       window.scrollTo({
         top: targetPosition,
         behavior: "smooth",
       })
-    } else {
-      console.log("[v0] Element not found for:", href)
     }
     setIsOpen(false)
   }
@@ -167,57 +144,38 @@ export function GlassmorphismNav() {
               </div>
 
               {/* Desktop Auth / CTA */}
-              <div className="hidden md:flex items-center space-x-4">
-                {userName ? (
-                  <div className="text-white/90 font-medium">Welcome, {userName}</div>
+              <div className="hidden md:flex items-center gap-4">
+                {user ? (
+                  <>
+                    <span className="max-w-48 truncate text-white font-medium">
+                      Welcome, {userDisplayName}
+                    </span>
+                    <button
+                      onClick={handleLogout}
+                      className="relative bg-white/10 hover:bg-white/20 text-white font-medium px-5 py-2 rounded-full flex items-center transition-all duration-300 hover:scale-105 cursor-pointer group border border-white/20"
+                    >
+                      <LogOut size={16} className="mr-2" />
+                      Logout
+                    </button>
+                  </>
                 ) : (
                   <>
-                    <Link href="/login" className="text-white/80 hover:text-white font-medium">
+                    <Link
+                      href="/login"
+                      className="rounded-full border border-white/20 px-5 py-2 text-white/85 hover:bg-white/10 hover:text-white font-medium transition-all duration-200"
+                    >
                       Login
                     </Link>
-                    <Link
-                      href="/signup"
-                      className="bg-white text-black font-medium px-4 py-2 rounded-full hover:shadow-md"
+                    <button
+                      className="relative bg-white hover:bg-gray-50 text-black font-medium px-6 py-2 rounded-full flex items-center transition-all duration-300 hover:scale-105 hover:shadow-lg cursor-pointer group"
+                      onClick={goToDashboard}
                     >
-                      Sign up
-                    </Link>
+                      <span className="mr-2">Get Started</span>
+                      <ArrowRight size={16} className="transition-transform duration-300 group-hover:translate-x-1" />
+                    </button>
                   </>
                 )}
               </div>
-
-              {/* Desktop CTA Button */}
-          <div className="hidden md:flex items-center gap-4">
-            {user ? (
-              <>
-                <span className="text-white font-medium">
-                  Welcome, {user.name || user.email}
-                </span>
-                <button
-                  onClick={() => {
-                    logout()
-                    router.push("/")
-                  }}
-                  className="relative bg-white/10 hover:bg-white/20 text-white font-medium px-6 py-2 rounded-full flex items-center transition-all duration-300 hover:scale-105 cursor-pointer group border border-white/20"
-                >
-                  <LogOut size={16} className="mr-2" />
-                  Logout
-                </button>
-              </>
-            ) : (
-              <>
-                <Link href="/login" className="text-white/80 hover:text-white font-medium">
-                  Login
-                </Link>
-                <button
-                  className="relative bg-white hover:bg-gray-50 text-black font-medium px-6 py-2 rounded-full flex items-center transition-all duration-300 hover:scale-105 hover:shadow-lg cursor-pointer group"
-                  onClick={() => router.push(user ? "/dashboard" : "/login")}
-                >
-                  <span className="mr-2">Get Started</span>
-                  <ArrowRight size={16} className="transition-transform duration-300 group-hover:translate-x-1" />
-                </button>
-              </>
-            )}
-          </div>
 
               {/* Mobile Menu Button */}
               <button
@@ -295,7 +253,7 @@ export function GlassmorphismNav() {
                 {user ? (
                   <>
                     <div className="text-white font-medium mb-2">
-                      Welcome, {user.name || user.email}
+                      Welcome, {userDisplayName}
                     </div>
                     <button
                       className={`relative bg-white/10 hover:bg-white/20 text-white font-medium px-6 py-3 rounded-full flex items-center transition-all duration-300 hover:scale-105 cursor-pointer group transform border border-white/20 ${
@@ -304,11 +262,7 @@ export function GlassmorphismNav() {
                       style={{
                         animationDelay: isOpen ? `${navigation.length * 80 + 150}ms` : "0ms",
                       }}
-                      onClick={() => {
-                        logout()
-                        router.push("/")
-                        setIsOpen(false)
-                      }}
+                      onClick={handleLogout}
                     >
                       <LogOut size={16} className="mr-2" />
                       Logout
@@ -318,7 +272,7 @@ export function GlassmorphismNav() {
                   <>
                     <Link
                       href="/login"
-                      className={`text-white/80 hover:text-white hover:bg-white/10 rounded-lg px-3 py-3 text-left transition-all duration-300 font-medium cursor-pointer transform hover:scale-[1.02] hover:translate-x-1 ${
+                      className={`text-white/80 hover:text-white hover:bg-white/10 rounded-lg px-3 py-3 text-left transition-all duration-300 font-medium cursor-pointer transform hover:scale-[1.02] hover:translate-x-1 border border-white/10 ${
                         isOpen ? "animate-mobile-menu-item" : ""
                       }`}
                       style={{
@@ -335,10 +289,7 @@ export function GlassmorphismNav() {
                       style={{
                         animationDelay: isOpen ? `${navigation.length * 80 + 200}ms` : "0ms",
                       }}
-                      onClick={() => {
-                        router.push("/login")
-                        setIsOpen(false)
-                      }}
+                      onClick={goToDashboard}
                     >
                       <span className="mr-2">Get Started</span>
                       <ArrowRight size={16} className="transition-transform duration-300 group-hover:translate-x-1" />

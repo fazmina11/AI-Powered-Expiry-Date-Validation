@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Eye, EyeOff, Mail, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
+import { useRouter } from "next/navigation";
 
 interface PupilProps {
   size?: number;
@@ -173,7 +175,6 @@ export function AnimatedCharactersLoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
   const [mouseX, setMouseX] = useState<number>(0);
   const [mouseY, setMouseY] = useState<number>(0);
   const [isPurpleBlinking, setIsPurpleBlinking] = useState(false);
@@ -185,6 +186,8 @@ export function AnimatedCharactersLoginPage() {
   const blackRef = useRef<HTMLDivElement>(null);
   const yellowRef = useRef<HTMLDivElement>(null);
   const orangeRef = useRef<HTMLDivElement>(null);
+  const { login, isLoading } = useAuth();
+  const router = useRouter();
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -290,45 +293,12 @@ export function AnimatedCharactersLoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    setIsLoading(true);
 
     try {
-      const res = await fetch("http://localhost:8001/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-
-      if (!res.ok) {
-        const body = await res.json();
-        let errorMsg = "Login failed";
-        if (typeof body.detail === "string") {
-          errorMsg = body.detail;
-        } else if (Array.isArray(body.detail)) {
-          errorMsg = body.detail.map((err: any) => `${err.loc[err.loc.length - 1]}: ${err.msg}`).join(", ");
-        }
-        setError(errorMsg);
-        setIsLoading(false);
-        return;
-      }
-
-      const data = await res.json();
-      const token = data.access_token;
-      if (token) {
-        localStorage.setItem("auth_token", token);
-        const info = await fetch("http://localhost:8001/auth/me", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (info.ok) {
-          const user = await info.json();
-          localStorage.setItem("auth_user_name", user.name || "");
-        }
-        window.location.href = "/dashboard";
-      }
+      await login(email, password);
+      router.push("/dashboard");
     } catch (err) {
-      setError("Network error");
-    } finally {
-      setIsLoading(false);
+      setError((err as Error).message || "Login failed");
     }
   };
 

@@ -23,18 +23,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  // Restore user from localStorage on mount
   useEffect(() => {
-    const savedUser = localStorage.getItem("user")
-    const savedToken = localStorage.getItem("auth_token")
-    if (savedUser && savedToken) {
+    let isMounted = true
+
+    const restoreUser = async () => {
+      const savedToken = localStorage.getItem("auth_token")
+      const savedUser = localStorage.getItem("user")
+
+      if (!savedToken) {
+        setIsLoading(false)
+        return
+      }
+
+      if (savedUser) {
+        try {
+          const parsedUser = JSON.parse(savedUser) as User
+          if (!isMounted) return
+          setUser(parsedUser)
+          localStorage.setItem("auth_user_name", parsedUser.name || parsedUser.email)
+          setIsLoading(false)
+          return
+        } catch {
+          localStorage.removeItem("user")
+        }
+      }
+
       try {
-        setUser(JSON.parse(savedUser))
+        const me = await authApi.me(savedToken)
+        const authUser: User = { id: me.email, email: me.email, name: me.name }
+        if (!isMounted) return
+        setUser(authUser)
+        localStorage.setItem("user", JSON.stringify(authUser))
+        localStorage.setItem("auth_user_name", authUser.name || authUser.email)
       } catch {
         localStorage.removeItem("user")
+        localStorage.removeItem("auth_token")
+        localStorage.removeItem("auth_user_name")
+      } finally {
+        if (isMounted) setIsLoading(false)
       }
     }
-    setIsLoading(false)
+
+    restoreUser()
+
+    return () => {
+      isMounted = false
+    }
   }, [])
 
   const login = async (email: string, password: string) => {
@@ -47,6 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const authUser: User = { id: me.email, email: me.email, name: me.name }
       setUser(authUser)
       localStorage.setItem("user", JSON.stringify(authUser))
+      localStorage.setItem("auth_user_name", authUser.name || authUser.email)
     } finally {
       setIsLoading(false)
     }
@@ -62,6 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const authUser: User = { id: me.email, email: me.email, name: me.name }
       setUser(authUser)
       localStorage.setItem("user", JSON.stringify(authUser))
+      localStorage.setItem("auth_user_name", authUser.name || authUser.email)
     } finally {
       setIsLoading(false)
     }
@@ -71,6 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
     localStorage.removeItem("user")
     localStorage.removeItem("auth_token")
+    localStorage.removeItem("auth_user_name")
   }
 
   return (
