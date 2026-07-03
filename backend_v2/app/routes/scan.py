@@ -48,13 +48,50 @@ async def validate_frame(file: UploadFile = File(...)):
         nparr = np.frombuffer(contents, np.uint8)
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if frame is None:
-            return {"success": False, "message": "Invalid image file", "usable": False}
-            
+            return {"success": False, "message": "Invalid image file", "usable": False, "has_text": False}
+
+        # Apply light preprocessing before quality checks so blur / glare
+        # metrics are evaluated on the enhanced frame (same as what OCR sees)
+        try:
+            from app.services.paddle_ocr_service import _preprocess_for_ocr
+            import tempfile
+            fd, tmp_path = tempfile.mkstemp(suffix=".jpg")
+            os.close(fd)
+            cv2.imwrite(tmp_path, frame)
+            frame_enhanced = _preprocess_for_ocr(tmp_path)
+            os.remove(tmp_path)
+        except Exception:
+            frame_enhanced = frame  # fall back to raw frame
+
         from app.services.date_roi_service import is_frame_usable
-        usable, reason = is_frame_usable(frame)
-        return {"success": True, "usable": usable, "reason": reason}
+        usable, reason = is_frame_usable(frame_enhanced)
+        if not usable:
+            return {"success": True, "usable": False, "reason": reason, "has_text": False}
+
+        # Product detection: lightweight EasyOCR scan on enhanced frame
+        # Threshold is deliberately lenient so we don't miss dim/faint labels.
+        try:
+            from app.services.paddle_ocr_service import _get_reader
+            reader = _get_reader()
+            results = reader.readtext(frame_enhanced, detail=1)
+            # Consider a text block meaningful if:
+            #   - confidence > 0.20 (lenient — packaging ink varies a lot)
+            #   - text length > 1
+            meaningful = [r for r in results if r[2] > 0.20 and len(r[1].strip()) > 1]
+            # At least 1 meaningful block is enough to confirm a label is present
+            has_text = len(meaningful) >= 1
+
+            if not has_text:
+                return {"success": True, "usable": False, "reason": "No product label text detected", "has_text": False}
+        except Exception as ocr_exc:
+            import logging
+            logging.getLogger(__name__).warning("validate-frame OCR check failed: %s", ocr_exc)
+            # If the OCR check itself crashes, don't block the user — allow capture
+            return {"success": True, "usable": True, "reason": "", "has_text": True}
+
+        return {"success": True, "usable": True, "reason": "", "has_text": True}
     except Exception as exc:
-        return {"success": False, "message": str(exc), "usable": False}
+        return {"success": False, "message": str(exc), "usable": False, "has_text": False}
 
 @router.post("/start", status_code=201)
 def start_scan(db: Session = Depends(get_db)):
@@ -157,27 +194,54 @@ def process_queued_scan(ocr_result_id: UUID, image_path: str, barcode: Optional[
         pipeline = ScanPipelineService()
         result = pipeline.process_scan(image_path)
         
-        # Update OCRResult fields from pipeline results
+        # BUILD EXTRACTION SUMMARY (human-readable, structured text)
+        summary_lines = []
+        if result.product and result.product.name:
+            summary_lines.append(f"Product: {result.product.name}")
+            if result.product.brand:
+                summary_lines.append(f"Brand: {result.product.brand}")
+        if result.batch and result.batch.batch_number:
+            summary_lines.append(f"Batch: {result.batch.batch_number}")
+        if result.manufacturing and result.manufacturing.manufacturing_date:
+            summary_lines.append(f"MFG Date: {result.manufacturing.manufacturing_date}")
+        if result.expiry and result.expiry.expiry_date:
+            summary_lines.append(f"Expiry Date: {result.expiry.expiry_date}")
+        if result.pricing and result.pricing.price:
+            summary_lines.append(f"MRP: ₹{result.pricing.price}")
+        if result.product and result.product.weight:
+            summary_lines.append(f"Weight: {result.product.weight}")
+        if result.product and result.product.ingredients:
+            summary_lines.append(f"Ingredients: {result.product.ingredients}")
+            
+        # Store the summary as raw_text (this is what the frontend displays)
+        ocr_result.raw_text = "\n".join(summary_lines) if summary_lines else (result.ocr.raw_text if result.ocr else "")
+        
+        # Store overall confidence from OCR
         if result.ocr:
-            ocr_result.raw_text = result.ocr.raw_text
             ocr_result.overall_confidence = result.ocr.confidence
             
+        # Map ProductIntelligence fields → OCRResult database columns
         if result.manufacturing and result.manufacturing.manufacturing_date:
             ocr_result.candidate_mfg_date = result.manufacturing.manufacturing_date
         if result.expiry and result.expiry.expiry_date:
             ocr_result.candidate_expiry_date = result.expiry.expiry_date
         if result.batch:
             ocr_result.batch_number_detected = result.batch.batch_number
-        if result.pricing:
-            ocr_result.mrp_detected = result.pricing.price
+        if result.pricing and result.pricing.price is not None:
+            try:
+                mrp_val = str(result.pricing.price).replace(',', '')
+                ocr_result.mrp_detected = float(mrp_val)
+            except (ValueError, TypeError):
+                ocr_result.mrp_detected = result.pricing.price
             
         if result.product:
             ocr_result.extracted_product_name = result.product.name
             ocr_result.extracted_brand = result.product.brand
-            ocr_result.extracted_description = result.product.ingredients
+            ocr_result.extracted_description = result.product.category
+            ocr_result.extracted_ingredients_text = result.product.ingredients
             
-        # Store bounding boxes in extracted_text_blocks
-        if result.ocr_blocks:
+        # Store bounding boxes (ocr_blocks) → extracted_text_blocks column
+        if hasattr(result, 'ocr_blocks') and result.ocr_blocks:
             ocr_result.extracted_text_blocks = result.ocr_blocks
             
         # Try to resolve barcode and product
@@ -296,13 +360,27 @@ def enqueue_scan(
         db.add(session)
         db.flush()
         
-    # 2. Save uploaded file to uploads directory
+    # 2. Save uploaded file to uploads directory and preprocess for OCR
     os.makedirs("uploads", exist_ok=True)
     ext = file.filename.split(".")[-1] if file.filename else "jpg"
     filename = f"{uuid.uuid4()}.{ext}"
     saved_file_path = os.path.join("uploads", filename)
     with open(saved_file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
+
+    # Preprocess the saved image (upscale, glare removal, CLAHE, sharpening)
+    # This replaces the raw capture with an OCR-optimised version on disk
+    try:
+        import cv2
+        from app.services.paddle_ocr_service import _preprocess_for_ocr
+        enhanced_frame = _preprocess_for_ocr(saved_file_path)
+        # Save preprocessed image back, overwriting the raw capture
+        cv2.imwrite(saved_file_path, enhanced_frame)
+    except Exception as pre_exc:
+        import logging
+        logging.getLogger("scan_enqueue").warning(
+            "[Enqueue] Image preprocessing failed, keeping raw capture: %s", pre_exc
+        )
         
     # 3. Create placeholder product if barcode present and does not exist
     product_id = None
@@ -387,9 +465,12 @@ def get_scan_history(db: Session = Depends(get_db)):
             "image_url": img_url,
             "created_at": r.created_at.isoformat() if r.created_at else None,
             "product": {
-                "name": r.extracted_product_name or (r.product.name if r.product else "Unknown Product"),
+                # Prefer OCR-extracted name over the placeholder product row name
+                "name": r.extracted_product_name or (
+                    r.product.name if r.product and not r.product.name.startswith("Pending OCR") else None
+                ) or "Unknown Product",
                 "brand": r.extracted_brand or (r.product.brand if r.product else None),
-                "barcode": r.product.barcode if r.product else None,
+                "barcode": r.product.barcode if r.product and not r.product.barcode.startswith("PENDING-") else None,
             },
             "extracted_data": {
                 "manufacturing_date": r.candidate_mfg_date.isoformat() if r.candidate_mfg_date else None,
@@ -398,10 +479,45 @@ def get_scan_history(db: Session = Depends(get_db)):
                 "mrp": float(r.mrp_detected) if r.mrp_detected else None,
                 "raw_text": r.raw_text,
                 "confidence": float(r.overall_confidence) if r.overall_confidence else 0.0,
+                # Include extra fields the frontend modal can use
+                "product_name": r.extracted_product_name,
+                "brand": r.extracted_brand,
+                "ingredients": r.extracted_ingredients_text,
             },
             "ocr_blocks": r.extracted_text_blocks
         })
     return success_response(data, "Scan history retrieved")
+
+
+@router.delete("/clear-history")
+def clear_scan_history(db: Session = Depends(get_db)):
+    from app.models.ocr_result import OCRResult
+    from app.models.product_image import ProductImage
+    from app.models.scan_alert import ScanAlert
+    
+    try:
+        # Delete all scan alerts first (FK dependency)
+        db.query(ScanAlert).delete()
+        # Delete all OCR results
+        db.query(OCRResult).delete()
+        # Delete all product images
+        db.query(ProductImage).delete()
+        db.commit()
+        
+        # Also clean up upload files on disk
+        import glob
+        upload_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "uploads")
+        for f in glob.glob(os.path.join(upload_dir, "*")):
+            if os.path.isfile(f):
+                try:
+                    os.remove(f)
+                except Exception:
+                    pass
+        
+        return success_response(None, "All scan history cleared")
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.get("/result/{result_id}")
@@ -420,13 +536,16 @@ def get_ocr_result_status(result_id: UUID, db: Session = Depends(get_db)):
         
     return success_response({
         "id": str(r.id),
+        "session_id": str(r.scan_session_id) if r.scan_session_id else None,
         "status": r.ocr_status,
         "failure_reason": r.failure_reason,
         "image_url": img_url,
         "product": {
-            "name": r.extracted_product_name or (r.product.name if r.product else "Unknown Product"),
+            "name": r.extracted_product_name or (
+                r.product.name if r.product and not r.product.name.startswith("Pending OCR") else None
+            ) or "Unknown Product",
             "brand": r.extracted_brand or (r.product.brand if r.product else None),
-            "barcode": r.product.barcode if r.product else None,
+            "barcode": r.product.barcode if r.product and not r.product.barcode.startswith("PENDING-") else None,
         },
         "extracted_data": {
             "manufacturing_date": r.candidate_mfg_date.isoformat() if r.candidate_mfg_date else None,
@@ -435,6 +554,10 @@ def get_ocr_result_status(result_id: UUID, db: Session = Depends(get_db)):
             "mrp": float(r.mrp_detected) if r.mrp_detected else None,
             "raw_text": r.raw_text,
             "confidence": float(r.overall_confidence) if r.overall_confidence else 0.0,
+            # Extra fields for the review modal
+            "product_name": r.extracted_product_name,
+            "brand": r.extracted_brand,
+            "ingredients": r.extracted_ingredients_text,
         },
         "ocr_blocks": r.extracted_text_blocks
     }, "OCR status retrieved")

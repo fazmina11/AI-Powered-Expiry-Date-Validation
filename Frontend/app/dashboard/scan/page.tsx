@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Camera, XCircle, ScanLine, Loader2, AlertTriangle, CheckCircle2, History, Info, Play, Pause
+  Camera, XCircle, ScanLine, Loader2, AlertTriangle, CheckCircle2, History, Info, Play, Pause, Trash2, Eye
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -155,6 +155,7 @@ export default function ScanPage() {
   // Auto-Scan & Queue Settings
   const [autoScanEnabled, setAutoScanEnabled] = useState(true);
   const [isAnalyzingFrame, setIsAnalyzingFrame] = useState(false);
+  const [productDetected, setProductDetected] = useState(false);
   const lastScanTime = useRef(0);
 
   // Scan Queue History
@@ -180,15 +181,16 @@ export default function ScanPage() {
 
   /* ── Poll individual enqueued scan status ── */
   const pollScanStatus = useCallback(async (resultId: string) => {
-    const maxAttempts = 30; // max 45s (30 * 1.5s)
+    const maxAttempts = 40; // max ~60s
     let attempts = 0;
+    // Start fast (every 800ms for the first 10 attempts), then slow to 2s
+    const getDelay = (attempt: number) => (attempt < 10 ? 800 : 2000);
     
-    const interval = setInterval(async () => {
+    const poll = async () => {
       attempts++;
       try {
         const item = await scanFlowApi.getResultStatus(resultId);
         if (item.status === "completed" || item.status === "failed") {
-          clearInterval(interval);
           setHistory(prev => prev.map(x => x.id === resultId ? item : x));
           
           toast({
@@ -198,20 +200,24 @@ export default function ScanPage() {
               : `Reason: ${item.failure_reason || 'Unknown error'}`,
             variant: item.status === "completed" ? "default" : "destructive"
           });
+          return; // stop polling
         }
       } catch (err) {
         console.error("Polling error:", err);
       }
       
-      if (attempts >= maxAttempts) {
-        clearInterval(interval);
+      if (attempts < maxAttempts) {
+        setTimeout(poll, getDelay(attempts));
+      } else {
         toast({
           title: "Scan processing timeout",
           description: "The background task took too long. Check the dashboard alerts.",
           variant: "warning" as any
         });
       }
-    }, 1500);
+    };
+
+    setTimeout(poll, 800);
   }, [toast]);
 
   /* ── Handle Barcode Detection ── */
@@ -266,7 +272,7 @@ export default function ScanPage() {
     }
   }, [flowStep, camStatus, startCamera]);
 
-  /* ── Auto-Capture Loop (Quality-Gate Driven) ── */
+  /* ── Auto-Capture Loop (Product Detection + Quality-Gate Driven) ── */
   useEffect(() => {
     if (flowStep === "idle" || !videoRef.current || !autoScanEnabled || camStatus !== "active") {
       return;
@@ -274,8 +280,8 @@ export default function ScanPage() {
 
     let intervalId: any;
     const analyzeFrame = async () => {
-      // Throttle captures: must wait 3 seconds between auto-captures
-      if (isAnalyzingFrame || Date.now() - lastScanTime.current < 3000) return;
+      // Throttle captures: 2 second minimum between auto-captures
+      if (isAnalyzingFrame || Date.now() - lastScanTime.current < 2000) return;
       
       const video = videoRef.current;
       if (!video || video.readyState !== video.HAVE_ENOUGH_DATA) return;
@@ -294,9 +300,12 @@ export default function ScanPage() {
               return;
             }
             try {
-              // Run real-time frame quality check (blur, glare, hand-occlusion)
+              // Run real-time frame quality + product text detection check
               const res = await scanFlowApi.validateFrame(blob);
-              if (res.success && res.usable) {
+              
+              if (res.success && res.usable && res.has_text) {
+                // Product detected and frame is usable — auto-capture!
+                setProductDetected(true);
                 playScanBeep();
                 lastScanTime.current = Date.now();
                 
@@ -309,7 +318,7 @@ export default function ScanPage() {
                   setTimeout(() => flashOverlay.remove(), 300);
                 }, 100);
 
-                const dataUrl = canvas.toDataURL("image/jpeg");
+                const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
                 
                 // Trigger background queue enqueueing
                 const enqueueRes = await scanFlowApi.enqueueScan(blob, session?.id || undefined, detectedBarcode || undefined);
@@ -345,16 +354,21 @@ export default function ScanPage() {
                 setProduct(null);
                 barcodeHandled.current = false;
                 setFlowStep("scanning");
+                setProductDetected(false);
 
                 // Start polling background worker status
                 pollScanStatus(enqueueRes.ocr_result_id);
+              } else {
+                // Frame isn't ready (no text detected or quality issue)
+                setProductDetected(false);
               }
             } catch (err) {
               console.error("Frame analysis validation error:", err);
+              setProductDetected(false);
             } finally {
               setIsAnalyzingFrame(false);
             }
-          }, "image/jpeg", 0.85);
+          }, "image/jpeg", 0.95);
         } else {
           setIsAnalyzingFrame(false);
         }
@@ -393,7 +407,7 @@ export default function ScanPage() {
         }
 
         playScanBeep();
-        const dataUrl = canvas.toDataURL("image/jpeg");
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
         
         // Enqueue scan to queue
         const enqueueRes = await scanFlowApi.enqueueScan(blob, session.id, detectedBarcode || undefined);
@@ -431,7 +445,7 @@ export default function ScanPage() {
 
         pollScanStatus(enqueueRes.ocr_result_id);
         toast({ title: "Enqueued", description: "Scan added to background queue successfully." });
-      }, "image/jpeg", 0.90);
+      }, "image/jpeg", 0.95);
 
     } catch (err: any) {
       toast({ title: "Capture failed", description: err.message, variant: "destructive" });
@@ -443,8 +457,9 @@ export default function ScanPage() {
   const handleOpenInspect = (item: OCRHistoryItem) => {
     setActiveItem(item);
     setActiveItemData({
-      product_name: item.product.name,
-      brand: item.product.brand || undefined,
+      // Use OCR-extracted product name first, fall back to product lookup name
+      product_name: item.extracted_data.product_name || item.product.name,
+      brand: item.extracted_data.brand || item.product.brand || undefined,
       manufacturing_date: item.extracted_data.manufacturing_date || undefined,
       expiry_date: item.extracted_data.expiry_date || undefined,
       batch_number: item.extracted_data.batch_number || undefined,
@@ -508,8 +523,20 @@ export default function ScanPage() {
     setFlowStep("idle");
     setDetectedBarcode("");
     setProduct(null);
+    setProductDetected(false);
     barcodeHandled.current = false;
   }, [session, stopStream]);
+
+  /* ── Clear Queue ── */
+  const handleClearQueue = useCallback(async () => {
+    try {
+      await scanFlowApi.clearHistory();
+      setHistory([]);
+      toast({ title: "Queue Cleared", description: "All previous scan items have been removed." });
+    } catch (err: any) {
+      toast({ title: "Failed to clear", description: err.message, variant: "destructive" });
+    }
+  }, [toast]);
 
   /* ─────────── Idle / Entry Screen ─────────── */
   if (flowStep === "idle" || flowStep === "starting") {
@@ -622,6 +649,33 @@ export default function ScanPage() {
                   detectedCode={detectedBarcode}
                 />
               </CameraView>
+
+              {/* Product detection status badge */}
+              {camStatus === "active" && autoScanEnabled && (
+                <div className={`absolute top-6 left-1/2 -translate-x-1/2 z-40 px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide flex items-center gap-2 backdrop-blur-md transition-all duration-300 ${
+                  productDetected
+                    ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 shadow-lg shadow-emerald-500/20'
+                    : isAnalyzingFrame
+                      ? 'bg-blue-500/15 border border-blue-500/30 text-blue-300'
+                      : 'bg-slate-800/60 border border-slate-700/50 text-slate-400'
+                }`}>
+                  {productDetected ? (
+                    <>
+                      <div className="relative">
+                        <Eye className="size-3.5" />
+                        <span className="absolute inset-0 animate-ping">
+                          <Eye className="size-3.5 text-emerald-400 opacity-75" />
+                        </span>
+                      </div>
+                      PRODUCT LOCKED — CAPTURING NOW
+                    </>
+                  ) : isAnalyzingFrame ? (
+                    <><Loader2 className="size-3.5 animate-spin" /> ANALYZING FRAME...</>
+                  ) : (
+                    <><ScanLine className="size-3.5 animate-pulse" /> WAITING FOR CLEAR PRODUCT LABEL...</>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Quality and Manual Override controls */}
@@ -630,8 +684,8 @@ export default function ScanPage() {
                 <Info className="size-4 text-blue-500 shrink-0" />
                 <span>
                   {autoScanEnabled 
-                    ? "Keep camera steady. Images are auto-snapped once clear and sent to the queue." 
-                    : "Align product label details and click the button to capture."}
+                    ? "Hold product label flat, well-lit and steady. AI auto-captures when text is detected clearly." 
+                    : "Align product label so dates and batch number are fully visible, then click capture."}
                 </span>
               </div>
               
@@ -654,11 +708,24 @@ export default function ScanPage() {
               <History className="size-4 text-slate-400" />
               <span className="text-sm font-semibold text-slate-200">Scan Queue & History</span>
             </div>
-            {history.length > 0 && (
-              <span className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">
-                {history.length} items
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {history.length > 0 && (
+                <>
+                  <span className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full">
+                    {history.length} items
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleClearQueue}
+                    className="text-slate-500 hover:text-red-400 hover:bg-red-400/10 h-7 w-7 p-0"
+                    title="Clear all scan history"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Queue Scroll Feed */}
@@ -738,8 +805,8 @@ export default function ScanPage() {
 
                         {/* Bottom: Date Summary */}
                         {isCompleted && (
-                          <div className="flex gap-3 text-[11px] mt-1.5 pt-1 border-t border-slate-900 text-slate-400">
-                            {item.extracted_data.mfg_date && (
+                          <div className="flex flex-wrap gap-3 text-[11px] mt-1.5 pt-1 border-t border-slate-900 text-slate-400">
+                            {item.extracted_data.manufacturing_date && (
                               <div>
                                 <span className="text-slate-600 block text-[9px] uppercase tracking-wider">MFG</span>
                                 <span className="font-mono">{item.extracted_data.manufacturing_date}</span>
@@ -757,6 +824,12 @@ export default function ScanPage() {
                               <div>
                                 <span className="text-slate-600 block text-[9px] uppercase tracking-wider">Batch</span>
                                 <span className="truncate max-w-[60px] block font-mono">{item.extracted_data.batch_number}</span>
+                              </div>
+                            )}
+                            {item.extracted_data.mrp != null && item.extracted_data.mrp > 0 && (
+                              <div>
+                                <span className="text-slate-600 block text-[9px] uppercase tracking-wider">MRP</span>
+                                <span className="font-mono text-emerald-400 font-medium">₹{item.extracted_data.mrp}</span>
                               </div>
                             )}
                           </div>

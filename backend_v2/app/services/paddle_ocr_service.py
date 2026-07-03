@@ -35,6 +35,53 @@ def _get_reader():
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+def _preprocess_for_ocr(image_path: str) -> "np.ndarray":
+    """
+    Load and preprocess an image for best OCR accuracy.
+    Applies: upscaling, glare removal, CLAHE contrast enhancement, sharpening, denoising.
+    Returns a BGR numpy array ready for EasyOCR.
+    """
+    import cv2
+    import numpy as np
+
+    img = cv2.imread(image_path)
+    if img is None:
+        raise FileNotFoundError(f"cv2.imread returned None for: {image_path}")
+
+    h, w = img.shape[:2]
+
+    # 1. Upscale small images — OCR accuracy drops significantly below ~800px height
+    min_side = min(h, w)
+    if min_side < 800:
+        scale = 800 / min_side
+        img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_CUBIC)
+        h, w = img.shape[:2]
+
+    # 2. Remove glare / blown-out highlights via inpainting
+    gray_tmp = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    _, glare_mask = cv2.threshold(gray_tmp, 245, 255, cv2.THRESH_BINARY)
+    if np.sum(glare_mask) > 0:
+        kernel_g = np.ones((3, 3), np.uint8)
+        glare_mask = cv2.dilate(glare_mask, kernel_g, iterations=1)
+        img = cv2.inpaint(img, glare_mask, 3, cv2.INPAINT_TELEA)
+
+    # 3. CLAHE contrast enhancement in LAB space (preserves colour, lifts dim labels)
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    l, a, b_ch = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    l = clahe.apply(l)
+    img = cv2.cvtColor(cv2.merge((l, a, b_ch)), cv2.COLOR_LAB2BGR)
+
+    # 4. Unsharp masking — sharpens text edges
+    blurred = cv2.GaussianBlur(img, (0, 0), 2.0)
+    img = cv2.addWeighted(img, 2.0, blurred, -1.0, 0)
+
+    # 5. Light denoising (keeps text sharp while smoothing sensor noise)
+    img = cv2.fastNlMeansDenoisingColored(img, None, h=6, hColor=6, templateWindowSize=7, searchWindowSize=21)
+
+    return img
+
+
 def extract_text(image_path: str) -> dict:
     """
     Run EasyOCR on a single image and return aggregated raw text.
@@ -54,8 +101,16 @@ def extract_text(image_path: str) -> dict:
 
     reader = _get_reader()
 
-    # EasyOCR readtext returns: [([box], text, confidence), ...]
-    results = reader.readtext(image_path)
+    # Apply preprocessing to improve OCR on noisy / small / glary label images
+    try:
+        import cv2
+        preprocessed = _preprocess_for_ocr(image_path)
+        results = reader.readtext(preprocessed, detail=1)
+        logger.info("[OCR] Used preprocessed image for EasyOCR. path=%s", image_path)
+    except Exception as pre_exc:
+        logger.warning("[OCR] Preprocessing failed (%s), falling back to raw file.", pre_exc)
+        # EasyOCR readtext returns: [([box], text, confidence), ...]
+        results = reader.readtext(image_path)
 
     if not results:
         return {

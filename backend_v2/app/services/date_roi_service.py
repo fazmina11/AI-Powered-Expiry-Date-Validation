@@ -186,7 +186,7 @@ def crop_to_base64(crop_bytes: bytes) -> str:
     return base64.b64encode(crop_bytes).decode('utf-8')
 
 
-def is_frame_usable(frame: np.ndarray, blur_threshold: float = 10.0, glare_threshold: float = 0.25, occlusion_threshold: float = 0.45) -> tuple[bool, str]:
+def is_frame_usable(frame: np.ndarray, blur_threshold: float = 5.0, glare_threshold: float = 0.35, occlusion_threshold: float = 0.50) -> tuple[bool, str]:
     """
     Evaluates whether the frame has sufficient quality (no excessive blur, glare, or hand occlusion).
     Returns (is_usable, reason_or_empty_str).

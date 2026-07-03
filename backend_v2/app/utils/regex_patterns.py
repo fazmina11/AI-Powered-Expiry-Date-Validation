@@ -43,5 +43,5 @@ MRP_PREFIX_PATTERN = re.compile(r'\b(?:mrp|price|rs\.?|maximum\s*retail\s*price)
 # Field inline extraction patterns
 BATCH_PATTERN = re.compile(r'\b(?:batch|b\.?no|lot|b\s*no|batch\s*no)[:\- ]\s*([a-zA-Z0-9\-\/]+)', re.IGNORECASE)
 LOT_PATTERN = re.compile(r'\b(?:lot|lot\s*no|l\.?no)[:\- ]\s*([a-zA-Z0-9\-\/]+)', re.IGNORECASE)
-MRP_PATTERN = re.compile(r'\b(?:mrp|price|rs\.?)[:\- ]\s*(\d+(?:\.\d{2})?)', re.IGNORECASE)
+MRP_PATTERN = re.compile(r'\b(?:mrp|m\.?r\.?p\.?|price|rs\.?|₹|inr)[\s:;\-\.]*(?:rs\.?\s*)?[₹]?\s*(\d+(?:[,.]\d+)*)', re.IGNORECASE)
 WEIGHT_PATTERN = re.compile(r'\b(\d+(?:\.\d+)?\s*(?:g|kg|ml|l|oz|gm|gms|pcs|units))\b', re.IGNORECASE)

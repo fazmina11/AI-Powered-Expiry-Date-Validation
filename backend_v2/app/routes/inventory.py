@@ -86,13 +86,6 @@ def list_inventory(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)
     }
     return success_response(data, "Inventory fetched successfully")
 
-@router.get("/{item_id}")
-def get_inventory_item(item_id: UUID, db: Session = Depends(get_db)):
-    item = db.query(InventoryItem).filter(InventoryItem.id == item_id).first()
-    if not item:
-        raise HTTPException(status_code=404, detail="Inventory item not found")
-    return success_response(_inventory_to_dict(item), "Inventory item fetched successfully")
-
 from app.models.product import Product
 from datetime import datetime
 
@@ -139,3 +132,10 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         "manual_review": manual_review,
         "validated_today": validated_today,
     }, "Stats fetched successfully")
+
+@router.get("/{item_id}")
+def get_inventory_item(item_id: UUID, db: Session = Depends(get_db)):
+    item = db.query(InventoryItem).filter(InventoryItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+    return success_response(_inventory_to_dict(item), "Inventory item fetched successfully")

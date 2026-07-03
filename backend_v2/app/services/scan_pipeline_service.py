@@ -328,20 +328,33 @@ class ScanPipelineService:
                         print("[Pipeline] Stage 4B: Text LLM skipped.", flush=True)
 
                 # ── STAGE 4C: Vision LLM (Targeted ROI Crop / Full Image Fallback) ──
-                # Triggered only when: (a) PaddleOCR found no text, OR
-                #                      (b) text LLM could not parse dates
+                # Triggered when: text LLM is missing ANY key fields (MFG, EXP, MRP, Batch)
                 llm_vision_result = None
-                dates_missing = (
+                
+                missing_key_fields = (
                     llm_text_result is None
-                    or (not llm_text_result.expiry_date and not llm_text_result.mfg_date)
+                    or not llm_text_result.expiry_date
+                    or not llm_text_result.mfg_date
+                    or llm_text_result.mrp is None
+                    or not llm_text_result.batch_number
                 )
-                if dates_missing:
-                    log.info("[Pipeline] Stage 4C: Dates missing — attempting targeted ROI Vision LLM...")
-                    print("[Pipeline] Stage 4C: Dates missing — attempting targeted ROI Vision LLM...", flush=True)
+                
+                if missing_key_fields:
+                    log.info("[Pipeline] Stage 4C: Missing key fields (MRP/Dates/Batch) — attempting Vision LLM...")
+                    print("[Pipeline] Stage 4C: Missing key fields — attempting Vision LLM...", flush=True)
+
+                    # Only try ROI crop if the ONLY missing things are dates. 
+                    # If MRP or Batch are missing, the date crop might cut them out!
+                    dates_only_missing = (
+                        llm_text_result is not None 
+                        and (not llm_text_result.expiry_date or not llm_text_result.mfg_date)
+                        and llm_text_result.mrp is not None
+                        and llm_text_result.batch_number is not None
+                    )
 
                     # 1. Try to extract ROI crop from frame
                     crop_bytes, found = None, False
-                    if frame is not None:
+                    if dates_only_missing and frame is not None:
                         try:
                             from app.services.date_roi_service import extract_date_crop, crop_to_base64
                             crop_bytes, found = extract_date_crop(frame, barcode=barcode_raw)

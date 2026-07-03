@@ -46,10 +46,10 @@ export function useCamera() {
 
     const constraints: MediaStreamConstraints = {
       video: deviceId
-        ? { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+        ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
         : {
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
             facingMode: { ideal: "environment" },
           },
       audio: false,

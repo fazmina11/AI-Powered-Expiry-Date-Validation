@@ -202,7 +202,7 @@ export const authApi = {
 
 export const statsApi = {
   async get(): Promise<DashboardStats> {
-    const response = await apiFetch<ApiResponse<DashboardStats>>("/stats");
+    const response = await apiFetch<ApiResponse<DashboardStats>>("/inventory/stats");
     return response.data;
   },
 };

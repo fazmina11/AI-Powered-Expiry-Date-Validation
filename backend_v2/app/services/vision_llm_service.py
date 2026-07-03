@@ -66,12 +66,22 @@ def build_vision_prompt(is_crop: bool) -> str:
         "leave 'expiry_date' as null and set 'shelf_life_days' accordingly (e.g. 9 months = 270 days).\n"
         "3. Output all parsed dates strictly in 'YYYY-MM-DD' format."
     )
+
+    mrp_guidelines = (
+        "IMPORTANT FOR MRP/PRICE:\n"
+        "- Look for 'MRP', 'M.R.P', 'M.R.P.', 'Rs.', 'Rs', '₹', 'INR', 'Price' labels on the packaging.\n"
+        "- The MRP is a numeric value (possibly with decimals) near these labels. Examples: 'MRP ₹199.00', 'Rs. 45', 'M.R.P: 1,299.00'.\n"
+        "- Extract ONLY the numeric value as a float (e.g., 199.0, 45.0, 1299.0). Strip currency symbols, commas, and trailing '.00'.\n"
+        "- If multiple prices are visible (e.g. pack price vs unit price), prefer the one labeled 'MRP'.\n"
+        "- Return null if no price is visible."
+    )
     
     if is_crop:
         return (
             "This is a cropped close-up of a product label showing dates, batch, or other text.\n"
             f"{date_guidelines}\n"
-            "Extract mfg_date, expiry_date, batch_number, ingredients, category.\n"
+            f"{mrp_guidelines}\n"
+            "Extract mfg_date, expiry_date, batch_number, mrp, ingredients, category.\n"
             "Return ONLY a valid JSON object matching this schema:\n"
             "{\n"
             "  \"mfg_date\": \"YYYY-MM-DD or null\",\n"
@@ -91,6 +101,7 @@ def build_vision_prompt(is_crop: bool) -> str:
         return (
             "This is a full product packaging photo.\n"
             f"{date_guidelines}\n"
+            f"{mrp_guidelines}\n"
             "Additional extraction instructions:\n"
             "- Brand and Product Name: Look at the brand logo (e.g. 'Happilo' at the top) and the product description (e.g. 'Dates'). Combine them, e.g. 'Happilo Dates'.\n"
             "- Ingredients: Look for the 'INGREDIENTS:' section (e.g. 'INGREDIENTS: Dates.') and extract it.\n"
@@ -144,6 +155,7 @@ def _extract_via_gemini(
             except Exception as e:
                 last_error = e
                 error_str = str(e)
+                print(f"[VisionLLM] Error with model {model_name}: {error_str}", flush=True)
                 if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str or "quota" in error_str.lower():
                     wait = min(2 ** attempt * 5, 30)
                     logger.warning(f"[VisionLLM] Quota exhausted for {model_name} (attempt {attempt+1}), waiting {wait}s before retry...")
@@ -153,6 +165,7 @@ def _extract_via_gemini(
                     logger.warning(f"[VisionLLM] Model {model_name} failed (non-quota): {e}")
                     break  # try next model
 
+    print(f"[VisionLLM] ALL MODELS EXHAUSTED. Last error: {last_error}", flush=True)
     raise last_error if last_error else RuntimeError("All Gemini models exhausted")
 
 
@@ -202,7 +215,10 @@ TEXT_PARSE_PROMPT = (
     "For example, '09/03/26' means 9th of March 2026. '08/12/26' means 8th of December 2026.\n"
     "If no absolute expiry date is printed but a relative shelf-life rule is shown (e.g. 'best before 90 days'), "
     "leave 'expiry_date' null and return the parsed duration in days under 'shelf_life_days' (e.g. 90). "
-    "Set confidence_score between 0.0 and 1.0 based on how complete and clear the data is.\n\n"
+    "Set confidence_score between 0.0 and 1.0 based on how complete and clear the data is.\n"
+    "IMPORTANT FOR MRP/PRICE: Look for 'MRP', 'M.R.P', 'Rs.', 'Rs', '₹', 'INR', 'Price' labels. "
+    "Extract the numeric value as a float (e.g., 'MRP ₹199.00' → 199.0, 'Rs. 45' → 45.0, 'M.R.P: 1,299.00' → 1299.0). "
+    "Strip currency symbols and commas. Return null if no price is found.\n\n"
     "RAW OCR TEXT:\n{raw_text}"
 )
 

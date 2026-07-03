@@ -124,7 +124,7 @@ export const scanFlowApi = {
     });
   },
 
-  async validateFrame(file: Blob): Promise<{ success: boolean; usable: boolean; reason?: string }> {
+  async validateFrame(file: Blob): Promise<{ success: boolean; usable: boolean; reason?: string; has_text?: boolean }> {
     const formData = new FormData();
     formData.append("file", file, "frame.jpg");
 
@@ -179,6 +179,20 @@ export const scanFlowApi = {
     });
     return res.data;
   },
+
+  async clearHistory(): Promise<void> {
+    const token = getToken();
+    const res = await fetch(`${SCAN_BASE}/clear-history`, {
+      method: "DELETE",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      throw new Error(json?.detail || "Failed to clear history");
+    }
+  },
 };
 
 export interface OCRHistoryItem {
@@ -200,6 +214,10 @@ export interface OCRHistoryItem {
     mrp: number | null;
     raw_text: string | null;
     confidence: number;
+    // enriched fields returned after OCR completes
+    product_name: string | null;
+    brand: string | null;
+    ingredients: string | null;
   };
   ocr_blocks: {
     width: number;
