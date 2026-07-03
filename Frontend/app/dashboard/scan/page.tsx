@@ -739,7 +739,7 @@ export default function ScanPage() {
                         {/* Bottom: Date Summary */}
                         {isCompleted && (
                           <div className="flex gap-3 text-[11px] mt-1.5 pt-1 border-t border-slate-900 text-slate-400">
-                            {item.extracted_data.mfg_date && (
+                            {item.extracted_data.manufacturing_date && (
                               <div>
                                 <span className="text-slate-600 block text-[9px] uppercase tracking-wider">MFG</span>
                                 <span className="font-mono">{item.extracted_data.manufacturing_date}</span>

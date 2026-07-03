@@ -23,6 +23,15 @@ import {
   Trash2,
   Eye,
   Loader2,
+  Thermometer,
+  Snowflake,
+  Wind,
+  Sun,
+  Scan,
+  Boxes,
+  FileText,
+  AlertCircle,
+  CalendarRange,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
@@ -323,6 +332,7 @@ export default function DashboardPage() {
 
   // Data states
   const [products, setProducts] = useState<Product[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
   const [inventoryStats, setInventoryStats] = useState<DashboardStats>({
     total_products: 0,
@@ -361,12 +371,14 @@ export default function DashboardPage() {
   const fetchProducts = async () => {
     try {
       setIsLoadingProducts(true);
-      const [data, stats] = await Promise.all([
+      const [data, stats, invData] = await Promise.all([
         productApi.getAll(),
         statsApi.get().catch(() => null),
+        inventoryApi.getAll(),
       ]);
       setProducts(data);
       if (stats) setInventoryStats(stats);
+      setInventoryItems(invData.items || []);
     } catch (error) {
       console.error("Failed to fetch products:", error);
     } finally {
@@ -463,127 +475,26 @@ export default function DashboardPage() {
     }
   };
 
+  // Derived Data for Dashboard
+  const expiredItems = inventoryItems.filter(item => item.remaining_days !== null && item.remaining_days <= 0);
+  const nearingExpiryItems = inventoryItems.filter(item => item.remaining_days !== null && item.remaining_days > 0 && item.remaining_days <= 30);
+
   if (isLoading || !user) {
     return null;
   }
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Left Sidebar - Black Theme */}
-      <aside className="w-72 bg-[oklch(0.05_0_0)] border-r border-white/10 flex flex-col">
-        <div className="p-6 border-b border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center">
-              <Package className="text-primary-foreground size-5" />
-            </div>
-            <div>
-              <h2 className="text-white font-bold text-lg">Cliste</h2>
-              <p className="text-white/50 text-xs">Expiry Validation</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="p-6 border-b border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center border border-white/20">
-              <span className="text-white font-semibold text-lg">
-                {user.name ? user.name.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase()}
-              </span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-white font-medium truncate">
-                {user.name || user.email.split("@")[0]}
-              </p>
-              <p className="text-white/50 text-sm truncate">{user.email}</p>
-            </div>
-          </div>
-        </div>
-
-        <nav className="flex-1 p-4 space-y-2">
-          <p className="text-white/40 text-xs font-semibold uppercase tracking-wider px-4 mb-3">
-            Main Menu
-          </p>
-
-          <button
-            onClick={() => setActiveTab("inventory")}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-              activeTab === "inventory"
-                ? "bg-primary text-primary-foreground font-medium"
-                : "text-white/70 hover:bg-white/10 hover:text-white"
-            }`}
-          >
-            <LayoutDashboard className="size-5" />
-            <span>Inventory Management</span>
-            {activeTab === "inventory" && <ChevronRight className="size-4 ml-auto" />}
-          </button>
-
-          <button
-            onClick={() => setActiveTab("intelligence")}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-              activeTab === "intelligence"
-                ? "bg-primary text-primary-foreground font-medium"
-                : "text-white/70 hover:bg-white/10 hover:text-white"
-            }`}
-          >
-            <BarChart3 className="size-5" />
-            <span>Inventory Intelligence</span>
-            {activeTab === "intelligence" && <ChevronRight className="size-4 ml-auto" />}
-          </button>
-
-          <div className="h-px bg-white/10 my-4" />
-
-          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white/70 hover:bg-white/10 hover:text-white transition-all">
-            <Calendar className="size-5" />
-            <span>Scheduled Checks</span>
-          </button>
-
-          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white/70 hover:bg-white/10 hover:text-white transition-all">
-            <Bell className="size-5" />
-            <span>Alerts</span>
-          </button>
-        </nav>
-
-        <div className="p-4 border-t border-white/10">
-          <button
-            onClick={() => {
-              logout();
-              router.push("/");
-            }}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white/70 hover:bg-red-500/10 hover:text-red-400 transition-all"
-          >
-            <svg
-              className="size-5"
-              xmlns="http://www.w3.org/2000/svg"
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-              <polyline points="16 17 21 12 16 7" />
-              <line x1="21" y1="12" x2="9" y2="12" />
-            </svg>
-            <span>Logout</span>
-          </button>
-        </div>
-      </aside>
-
       {/* Right Content Area - Light White Theme */}
       <main className="flex-1 bg-white overflow-y-auto">
         <header className="sticky top-0 z-10 bg-white border-b border-gray-200 px-8 py-5">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
-                {activeTab === "inventory" ? "Inventory Management" : "Inventory Intelligence"}
+                Dashboard Overview
               </h1>
               <p className="text-gray-500 mt-1">
-                {activeTab === "inventory"
-                  ? "Manage and track your inventory items"
-                  : "Gain insights and analytics from your inventory data"}
+                Monitor your inventory health and warehouse environment
               </p>
             </div>
             <div className="flex items-center gap-4">
@@ -603,276 +514,222 @@ export default function DashboardPage() {
           </div>
         </header>
 
-        <div className="p-8">
-          {activeTab === "inventory" ? (
-            <div className="space-y-8">
-              {/* Stats Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {[
-                  {
-                    title: "Total Products",
-                    value: inventoryStats.total_products,
-                    change: `${inventoryStats.total_inventory} in inventory`,
-                    isPositive: true,
-                    icon: Package,
-                    color: "bg-blue-500",
-                  },
-                  {
-                    title: "Expiring Soon",
-                    value: inventoryStats.expiring_soon,
-                    change: `${inventoryStats.expired} expired`,
-                    isPositive: inventoryStats.expiring_soon === 0,
-                    icon: AlertTriangle,
-                    color: "bg-amber-500",
-                  },
-                  {
-                    title: "Accepted",
-                    value: inventoryStats.accepted,
-                    change: `${inventoryStats.rejected} rejected`,
-                    isPositive: true,
-                    icon: CheckCircle2,
-                    color: "bg-green-500",
-                  },
-                  {
-                    title: "Validated Today",
-                    value: inventoryStats.validated_today,
-                    change: `${inventoryStats.manual_review} need review`,
-                    isPositive: true,
-                    icon: Clock,
-                    color: "bg-purple-500",
-                  },
-                ].map((stat, index) => (
-                  <div
-                    key={index}
-                    className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className={`${stat.color} p-3 rounded-xl text-white`}>
-                        <stat.icon className="size-5" />
-                      </div>
-                      <div
-                        className={`flex items-center gap-1 text-sm font-medium ${
-                          stat.isPositive ? "text-green-600" : "text-red-600"
-                        }`}
-                      >
-                        {stat.isPositive ? (
-                          <ArrowUpRight className="size-4" />
-                        ) : (
-                          <ArrowDownRight className="size-4" />
-                        )}
-                        {stat.change}
-                      </div>
-                    </div>
-                    <div className="mt-4">
-                      <p className="text-3xl font-bold text-gray-900">{stat.value}</p>
-                      <p className="text-gray-500 text-sm mt-1">{stat.title}</p>
-                    </div>
-                  </div>
-                ))}
+        <div className="p-8 space-y-8">
+          
+          {/* Top Section: Expired & Nearing Expiry */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            {/* Expired Products */}
+            <div className="bg-white border border-red-200 rounded-2xl shadow-sm overflow-hidden flex flex-col">
+              <div className="p-5 border-b border-red-100 bg-red-50/50 flex items-center gap-3">
+                <div className="p-2 bg-red-100 text-red-600 rounded-lg">
+                  <AlertTriangle className="size-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-red-900">Expired Products</h2>
+                  <p className="text-sm text-red-600">Immediate action required</p>
+                </div>
+                <span className="ml-auto bg-red-600 text-white px-3 py-1 rounded-full text-sm font-bold">
+                  {expiredItems.length}
+                </span>
               </div>
-
-              {/* Inventory Table */}
-              <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-                <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-                  <div>
-                    <h2 className="text-lg font-semibold text-gray-900">Products</h2>
-                    <p className="text-gray-500 text-sm mt-1">Manage and track your product inventory</p>
+              <div className="p-5 flex-1 overflow-y-auto max-h-80">
+                {expiredItems.length > 0 ? (
+                  <div className="space-y-3">
+                    {expiredItems.map((item) => {
+                      const product = products.find(p => p.id === item.product_id);
+                      return (
+                        <div key={item.id} className="flex items-center justify-between p-3 bg-red-50/30 border border-red-100 rounded-xl">
+                          <div>
+                            <p className="font-semibold text-gray-900">{product?.name || "Unknown Product"}</p>
+                            <p className="text-xs text-gray-500">Batch: {item.batch_number}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-bold text-red-600">Expired {Math.abs(item.remaining_days!)} days ago</p>
+                            <p className="text-xs text-gray-500">Exp: {item.expiry_date && new Date(item.expiry_date).toLocaleDateString()}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                  <div className="flex items-center gap-3">
-                    <button className="flex items-center gap-2 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors">
-                      <Filter className="size-4" />
-                      Filter
-                    </button>
-                    <button
-                      onClick={() => setIsAddModalOpen(true)}
-                      className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors"
-                    >
-                      <Plus className="size-4" />
-                      Add Product
-                    </button>
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-2">
+                    <CheckCircle2 className="size-8 text-green-400" />
+                    <p>No expired products!</p>
                   </div>
-                </div>
-
-                <div className="overflow-x-auto">
-                  {isLoadingProducts ? (
-                    <div className="flex items-center justify-center py-16">
-                      <Loader2 className="size-8 animate-spin text-gray-400" />
-                    </div>
-                  ) : (
-                    <table className="w-full">
-                      <thead className="bg-gray-50 border-b border-gray-200">
-                        <tr>
-                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            Product
-                          </th>
-                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            SKU
-                          </th>
-                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            Category
-                          </th>
-                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            Barcode
-                          </th>
-                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            Status
-                          </th>
-                          <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            Created
-                          </th>
-                          <th className="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                            Actions
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {products.map((product) => (
-                          <tr key={product.id} className="hover:bg-gray-50 transition-colors">
-                            <td className="px-6 py-4">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-                                  <Package className="size-5 text-gray-500" />
-                                </div>
-                                <span className="font-medium text-gray-900">{product.name}</span>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 text-sm text-gray-600 font-mono">
-                              {product.sku}
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className="px-3 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-full">
-                                {product.category || "Uncategorized"}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-sm text-gray-600 font-mono">
-                              {product.barcode}
-                            </td>
-                            <td className="px-6 py-4">{getStatusBadge(product)}</td>
-                            <td className="px-6 py-4 text-sm text-gray-600">
-                              {new Date(product.created_at).toLocaleDateString()}
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                <button
-                                  onClick={() => handleViewProduct(product)}
-                                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                                  title="View Details"
-                                >
-                                  <Eye className="size-4 text-gray-500" />
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setSelectedProduct(product);
-                                    setIsEditModalOpen(true);
-                                  }}
-                                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                                  title="Edit Product"
-                                >
-                                  <Edit2 className="size-4 text-gray-500" />
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setSelectedProduct(product);
-                                    setIsDeleteConfirmOpen(true);
-                                  }}
-                                  className="p-2 hover:bg-red-50 rounded-lg transition-colors"
-                                  title="Delete Product"
-                                >
-                                  <Trash2 className="size-4 text-red-500" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-
-                <div className="p-6 border-t border-gray-200 flex items-center justify-between">
-                  <p className="text-sm text-gray-500">
-                    Showing <span className="font-semibold text-gray-900">1</span> to{" "}
-                    <span className="font-semibold text-gray-900">{products.length}</span> of{" "}
-                    <span className="font-semibold text-gray-900">{products.length}</span> results
-                  </p>
-                </div>
+                )}
               </div>
             </div>
-          ) : (
-            <div className="space-y-8">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-6">Expiry Trend Analysis</h3>
-                  <div className="h-64 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl flex items-center justify-center">
-                    <div className="text-center">
-                      <BarChart3 className="size-12 text-gray-300 mx-auto mb-3" />
-                      <p className="text-gray-500">Chart visualization coming soon</p>
-                    </div>
-                  </div>
-                </div>
 
-                <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-6">Category Distribution</h3>
-                  <div className="space-y-4">
-                    {[
-                      { name: "Beverages", percentage: 28 },
-                      { name: "Dairy", percentage: 23 },
-                      { name: "Produce", percentage: 20 },
-                      { name: "Bakery", percentage: 16 },
-                      { name: "Other", percentage: 13 },
-                    ].map((category, index) => (
-                      <div key={index}>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm text-gray-700 font-medium">
-                            {category.name}
-                          </span>
-                          <span className="text-sm text-gray-500">{category.percentage}%</span>
-                        </div>
-                        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-gradient-to-r from-primary to-primary/60 rounded-full transition-all duration-1000"
-                            style={{ width: `${category.percentage}%` }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+            {/* Nearing Expiry */}
+            <div className="bg-white border border-amber-200 rounded-2xl shadow-sm overflow-hidden flex flex-col">
+              <div className="p-5 border-b border-amber-100 bg-amber-50/50 flex items-center gap-3">
+                <div className="p-2 bg-amber-100 text-amber-600 rounded-lg">
+                  <Clock className="size-5" />
                 </div>
+                <div>
+                  <h2 className="text-lg font-bold text-amber-900">Nearing Expiry</h2>
+                  <p className="text-sm text-amber-600">Expires within 30 days</p>
+                </div>
+                <span className="ml-auto bg-amber-500 text-white px-3 py-1 rounded-full text-sm font-bold">
+                  {nearingExpiryItems.length}
+                </span>
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-2xl p-6">
-                  <div className="w-12 h-12 bg-green-500 rounded-xl flex items-center justify-center text-white mb-4">
-                    <TrendingUp className="size-6" />
+              <div className="p-5 flex-1 overflow-y-auto max-h-80">
+                {nearingExpiryItems.length > 0 ? (
+                  <div className="space-y-3">
+                    {nearingExpiryItems.map((item) => {
+                      const product = products.find(p => p.id === item.product_id);
+                      return (
+                        <div key={item.id} className="flex items-center justify-between p-3 bg-amber-50/30 border border-amber-100 rounded-xl">
+                          <div>
+                            <p className="font-semibold text-gray-900">{product?.name || "Unknown Product"}</p>
+                            <p className="text-xs text-gray-500">Batch: {item.batch_number}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-bold text-amber-600">In {item.remaining_days} days</p>
+                            <p className="text-xs text-gray-500">Exp: {item.expiry_date && new Date(item.expiry_date).toLocaleDateString()}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                  <h4 className="text-lg font-semibold text-green-900 mb-2">Waste Reduction</h4>
-                  <p className="text-green-700 text-sm">
-                    24% reduction in expired products this month. Great job on optimizing inventory levels!
-                  </p>
-                </div>
-
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-2xl p-6">
-                  <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center text-white mb-4">
-                    <Clock className="size-6" />
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-2">
+                    <Package className="size-8 text-gray-300" />
+                    <p>No products nearing expiry.</p>
                   </div>
-                  <h4 className="text-lg font-semibold text-blue-900 mb-2">Peak Expiry Hours</h4>
-                  <p className="text-blue-700 text-sm">
-                    Most products expire between 2-4 PM. Schedule your checks accordingly.
-                  </p>
-                </div>
-
-                <div className="bg-gradient-to-br from-amber-50 to-amber-100 border border-amber-200 rounded-2xl p-6">
-                  <div className="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center text-white mb-4">
-                    <AlertTriangle className="size-6" />
-                  </div>
-                  <h4 className="text-lg font-semibold text-amber-900 mb-2">Attention Needed</h4>
-                  <p className="text-amber-700 text-sm">
-                    5 products in Dairy category need immediate restocking to avoid stockouts.
-                  </p>
-                </div>
+                )}
               </div>
             </div>
-          )}
+          </div>
+
+          {/* Middle Section: Warehouse Temperatures */}
+          <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+            <div className="flex items-center gap-2 mb-6">
+              <Thermometer className="size-5 text-gray-600" />
+              <h2 className="text-lg font-bold text-gray-900">Warehouse Climate Monitoring</h2>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Freezer */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
+                    <Snowflake className="size-5" />
+                  </div>
+                  <span className="flex items-center gap-1 text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded-full">
+                    <span className="size-1.5 rounded-full bg-green-500 animate-pulse" /> Optimal
+                  </span>
+                </div>
+                <p className="text-sm text-gray-500 font-medium">Freezer Zone</p>
+                <div className="flex items-baseline gap-1 mt-1">
+                  <span className="text-3xl font-bold text-gray-900">-18.5</span>
+                  <span className="text-gray-500 font-medium">°C</span>
+                </div>
+                <p className="text-xs text-gray-400 mt-2">Target: -18°C to -22°C</p>
+              </div>
+
+              {/* Cool Storage */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="p-2 bg-cyan-100 text-cyan-600 rounded-lg">
+                    <Wind className="size-5" />
+                  </div>
+                  <span className="flex items-center gap-1 text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded-full">
+                    <span className="size-1.5 rounded-full bg-green-500 animate-pulse" /> Optimal
+                  </span>
+                </div>
+                <p className="text-sm text-gray-500 font-medium">Cool Storage</p>
+                <div className="flex items-baseline gap-1 mt-1">
+                  <span className="text-3xl font-bold text-gray-900">4.2</span>
+                  <span className="text-gray-500 font-medium">°C</span>
+                </div>
+                <p className="text-xs text-gray-400 mt-2">Target: 2°C to 8°C</p>
+              </div>
+
+              {/* Normal Storage */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="p-2 bg-orange-100 text-orange-600 rounded-lg">
+                    <Boxes className="size-5" />
+                  </div>
+                  <span className="flex items-center gap-1 text-xs font-bold text-amber-600 bg-amber-100 px-2 py-1 rounded-full">
+                    <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" /> Warning
+                  </span>
+                </div>
+                <p className="text-sm text-gray-500 font-medium">Normal Storage</p>
+                <div className="flex items-baseline gap-1 mt-1">
+                  <span className="text-3xl font-bold text-orange-600">26.8</span>
+                  <span className="text-gray-500 font-medium">°C</span>
+                </div>
+                <p className="text-xs text-gray-400 mt-2">Target: 15°C to 25°C</p>
+              </div>
+
+              {/* External */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="p-2 bg-yellow-100 text-yellow-600 rounded-lg">
+                    <Sun className="size-5" />
+                  </div>
+                  <span className="text-xs font-bold text-gray-500 bg-gray-200 px-2 py-1 rounded-full">
+                    External
+                  </span>
+                </div>
+                <p className="text-sm text-gray-500 font-medium">Local Weather</p>
+                <div className="flex items-baseline gap-1 mt-1">
+                  <span className="text-3xl font-bold text-gray-900">31.0</span>
+                  <span className="text-gray-500 font-medium">°C</span>
+                </div>
+                <p className="text-xs text-gray-400 mt-2">Humidity: 65%</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Section: Quick Services */}
+          <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+            <h2 className="text-lg font-bold text-gray-900 mb-6">Quick Services</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <button 
+                onClick={() => router.push('/dashboard/scan')}
+                className="group flex flex-col items-center p-6 bg-slate-50 border border-slate-200 rounded-xl hover:bg-primary/5 hover:border-primary/30 transition-all text-center"
+              >
+                <div className="w-12 h-12 bg-white rounded-full shadow-sm flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                  <Scan className="size-5 text-primary" />
+                </div>
+                <h3 className="font-semibold text-gray-900 group-hover:text-primary transition-colors">Scan / Intake</h3>
+                <p className="text-xs text-gray-500 mt-1">AI-powered barcode & expiry scanning</p>
+              </button>
+
+              <button 
+                onClick={() => router.push('/dashboard/inventory')}
+                className="group flex flex-col items-center p-6 bg-slate-50 border border-slate-200 rounded-xl hover:bg-blue-50 hover:border-blue-300 transition-all text-center"
+              >
+                <div className="w-12 h-12 bg-white rounded-full shadow-sm flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                  <Package className="size-5 text-blue-600" />
+                </div>
+                <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">Inventory Master</h3>
+                <p className="text-xs text-gray-500 mt-1">Manage all stored products & stock</p>
+              </button>
+
+              <button className="group flex flex-col items-center p-6 bg-slate-50 border border-slate-200 rounded-xl hover:bg-purple-50 hover:border-purple-300 transition-all text-center">
+                <div className="w-12 h-12 bg-white rounded-full shadow-sm flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                  <FileText className="size-5 text-purple-600" />
+                </div>
+                <h3 className="font-semibold text-gray-900 group-hover:text-purple-600 transition-colors">Reports</h3>
+                <p className="text-xs text-gray-500 mt-1">Generate compliance & stock reports</p>
+              </button>
+
+              <button className="group flex flex-col items-center p-6 bg-slate-50 border border-slate-200 rounded-xl hover:bg-orange-50 hover:border-orange-300 transition-all text-center">
+                <div className="w-12 h-12 bg-white rounded-full shadow-sm flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                  <CalendarRange className="size-5 text-orange-600" />
+                </div>
+                <h3 className="font-semibold text-gray-900 group-hover:text-orange-600 transition-colors">Scheduled Checks</h3>
+                <p className="text-xs text-gray-500 mt-1">Plan manual spot checks & audits</p>
+              </button>
+            </div>
+          </div>
+
         </div>
 
         {/* Modals */}
