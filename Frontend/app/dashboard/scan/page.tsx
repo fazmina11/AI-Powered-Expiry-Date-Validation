@@ -180,7 +180,7 @@ export default function ScanPage() {
 
   /* ── Poll individual enqueued scan status ── */
   const pollScanStatus = useCallback(async (resultId: string) => {
-    const maxAttempts = 30; // max 45s (30 * 1.5s)
+    const maxAttempts = 120; // max 180s (120 * 1.5s)
     let attempts = 0;
     
     const interval = setInterval(async () => {
@@ -868,6 +868,58 @@ export default function ScanPage() {
                               className="bg-slate-950 border-slate-800 text-sm focus-visible:ring-blue-700"
                             />
                           </div>
+                        </div>
+
+                        {/* 🤖 AI Shelf Life Analysis */}
+                        <div className="mt-4 p-3 bg-slate-900 border border-slate-800 rounded-lg">
+                          <span className="text-xs font-semibold text-slate-300 flex items-center gap-2 mb-3">
+                            <span>🤖</span> AI Shelf Life Analysis
+                          </span>
+                          
+                          {activeItem.extracted_data?.ml_decision ? (
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center text-sm">
+                                <span className="text-slate-400">Decision:</span>
+                                <span className={`font-bold ${
+                                  activeItem.extracted_data.ml_decision === 'ACCEPTED' ? 'text-emerald-400' :
+                                  activeItem.extracted_data.ml_decision === 'PRIORITY_SALE' ? 'text-orange-400' : 'text-red-400'
+                                }`}>
+                                  {activeItem.extracted_data.ml_decision}
+                                </span>
+                              </div>
+                              <div className="flex justify-between items-center text-xs">
+                                <span className="text-slate-500">Confidence:</span>
+                                <span className="text-slate-300">
+                                  {(activeItem.extracted_data.ml_confidence * 100).toFixed(1)}%
+                                </span>
+                              </div>
+                              <div className="flex justify-between items-center text-xs">
+                                <span className="text-slate-500">Adjusted Remaining:</span>
+                                <span className="text-slate-300">
+                                  {activeItem.extracted_data.adjusted_remaining?.toFixed(1)} days
+                                </span>
+                              </div>
+                              <div className="flex justify-between items-center text-xs">
+                                <span className="text-slate-500">Physics Remaining:</span>
+                                <span className="text-slate-300">
+                                  {activeItem.extracted_data.arrhenius_remaining?.toFixed(1)} days
+                                </span>
+                              </div>
+                              <div className={`mt-2 p-2 rounded text-xs text-center font-semibold ${
+                                activeItem.extracted_data.ml_decision === 'ACCEPTED' ? 'bg-emerald-900 text-emerald-300' :
+                                activeItem.extracted_data.ml_decision === 'PRIORITY_SALE' ? 'bg-orange-900 text-orange-300' :
+                                'bg-red-900 text-red-300'
+                              }`}>
+                                {activeItem.extracted_data.ml_decision === 'ACCEPTED' && '✅ Safe to stock normally'}
+                                {activeItem.extracted_data.ml_decision === 'PRIORITY_SALE' && '⚡ Discount and sell immediately'}
+                                {activeItem.extracted_data.ml_decision === 'REJECTED' && '🚫 Do not stock. Quarantine now.'}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-xs text-slate-500 text-center py-2">
+                              ⏳ ML analysis pending. Make sure integration.py is running.
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

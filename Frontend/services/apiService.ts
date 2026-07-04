@@ -53,6 +53,12 @@ export interface InventoryItem {
   status: string;
   decision_reason: string | null;
   created_at: string;
+  ml_decision?: string | null;
+  ml_confidence?: number | null;
+  adjusted_remaining?: number | null;
+  arrhenius_remaining?: number | null;
+  ml_status?: string | null;
+  ml_processed_at?: string | null;
 }
 
 export interface InventoryIntakeRequest {

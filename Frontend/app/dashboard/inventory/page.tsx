@@ -515,6 +515,7 @@ export default function InventoryPage() {
                     <th className="text-left py-3 px-4 font-medium text-gray-500 text-sm">EXP Date</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-500 text-sm">Days Left</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-500 text-sm">Status</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500 text-sm">ML Decision</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-500 text-sm">Actions</th>
                   </tr>
                 </thead>
@@ -540,6 +541,18 @@ export default function InventoryPage() {
                           ) : "—"}
                         </td>
                         <td className="py-3 px-4"><StatusBadge status={item.status} /></td>
+                        <td className="py-3 px-4">
+                          {item.ml_decision ? (
+                            <span className={`text-xs font-bold ${
+                                  item.ml_decision === 'ACCEPTED' ? 'text-emerald-500' :
+                                  item.ml_decision === 'PRIORITY_SALE' ? 'text-orange-500' : 'text-red-500'
+                                }`}>
+                              {item.ml_decision}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-400">PENDING</span>
+                          )}
+                        </td>
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-1">
                             <Button
@@ -637,6 +650,44 @@ export default function InventoryPage() {
                   <div>{selectedItem.created_at ? new Date(selectedItem.created_at).toLocaleDateString() : "—"}</div>
                 </div>
               </div>
+              
+              {selectedItem.ml_decision && (
+                <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-100">
+                  <h4 className="text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                    <span>🤖</span> AI Shelf Life Analysis
+                  </h4>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-500 block mb-1">Decision</span>
+                      <span className={`font-bold ${
+                          selectedItem.ml_decision === 'ACCEPTED' ? 'text-emerald-500' :
+                          selectedItem.ml_decision === 'PRIORITY_SALE' ? 'text-orange-500' : 'text-red-500'
+                        }`}>
+                        {selectedItem.ml_decision}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 block mb-1">Confidence</span>
+                      <span className="font-medium">
+                        {selectedItem.ml_confidence ? `${(selectedItem.ml_confidence * 100).toFixed(1)}%` : "—"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 block mb-1">Arrhenius Remaining</span>
+                      <span className="font-medium">
+                        {selectedItem.arrhenius_remaining ? `${selectedItem.arrhenius_remaining.toFixed(1)} days` : "—"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 block mb-1">Processed At</span>
+                      <span className="font-medium text-gray-600">
+                        {selectedItem.ml_processed_at ? new Date(selectedItem.ml_processed_at).toLocaleString() : "—"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               {selectedItem.decision_reason && (
                 <div className="p-3 bg-gray-50 rounded-lg text-sm">
                   <span className="text-gray-500 font-medium">Decision Reason: </span>

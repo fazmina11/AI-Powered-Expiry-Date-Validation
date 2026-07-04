@@ -200,6 +200,10 @@ export interface OCRHistoryItem {
     mrp: number | null;
     raw_text: string | null;
     confidence: number;
+    ml_decision?: string | null;
+    ml_confidence?: number | null;
+    adjusted_remaining?: number | null;
+    arrhenius_remaining?: number | null;
   };
   ocr_blocks: {
     width: number;

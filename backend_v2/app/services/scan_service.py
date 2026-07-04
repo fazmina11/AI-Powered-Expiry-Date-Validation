@@ -65,8 +65,6 @@ class ScanService:
             alerts.append("Barcode missing")
         if not payload.get("image_path"):
             alerts.append("Image Missing")
-        if not payload.get("raw_text"):
-            alerts.append("OCR Failed / Raw text missing")
         if not payload.get("expiry_date"):
             alerts.append("Missing Expiry Date")
             
@@ -96,33 +94,47 @@ class ScanService:
             db.flush() # flush to get b_scan.id
 
             # 2. Product Image
-            p_image = ProductImage(
-                scan_session_id=session.id,
-                image_url=payload.get("image_path"),
-                file_path=payload.get("image_path"),
-                file_size_bytes=1024, # Mock size
-                mime_type="image/jpeg"
-            )
-            db.add(p_image)
-            db.flush() # flush to get p_image.id
+            # Check if one exists
+            p_image = db.query(ProductImage).filter(ProductImage.scan_session_id == session.id).first()
+            if not p_image:
+                p_image = ProductImage(
+                    scan_session_id=session.id,
+                    image_url=payload.get("image_path"),
+                    file_path=payload.get("image_path"),
+                    file_size_bytes=1024, # Mock size
+                    mime_type="image/jpeg"
+                )
+                db.add(p_image)
+                db.flush()
 
             # 3. OCR Result
-            ocr_res = OCRResult(
-                scan_session_id=session.id,
-                product_image_id=p_image.id,
-                raw_text=payload.get("raw_text"),
-                ocr_confidence=payload.get("confidence"),
-                extracted_product_name=payload.get("product_name"),
-                extracted_brand=payload.get("brand"),
-                extracted_description=payload.get("description"),
-                candidate_mfg_date=payload.get("manufacturing_date"),
-                candidate_expiry_date=payload.get("expiry_date"),
-                batch_number_detected=payload.get("batch_number"),
-                mrp_detected=payload.get("mrp"),
-                candidate_packed_date=payload.get("packed_date"),
-                ocr_status="completed"
-            )
-            db.add(ocr_res)
+            # Update existing if available
+            ocr_res = db.query(OCRResult).filter(OCRResult.scan_session_id == session.id).first()
+            if not ocr_res:
+                ocr_res = OCRResult(
+                    scan_session_id=session.id,
+                    product_image_id=p_image.id,
+                    raw_text=payload.get("raw_text"),
+                    ocr_confidence=payload.get("confidence"),
+                    extracted_product_name=payload.get("product_name"),
+                    extracted_brand=payload.get("brand"),
+                    extracted_description=payload.get("description"),
+                    candidate_mfg_date=payload.get("manufacturing_date"),
+                    candidate_expiry_date=payload.get("expiry_date"),
+                    batch_number_detected=payload.get("batch_number"),
+                    mrp_detected=payload.get("mrp"),
+                    candidate_packed_date=payload.get("packed_date"),
+                    ocr_status="completed"
+                )
+                db.add(ocr_res)
+            else:
+                ocr_res.raw_text = payload.get("raw_text") or ocr_res.raw_text
+                ocr_res.candidate_mfg_date = payload.get("manufacturing_date") or ocr_res.candidate_mfg_date
+                ocr_res.candidate_expiry_date = payload.get("expiry_date") or ocr_res.candidate_expiry_date
+                ocr_res.batch_number_detected = payload.get("batch_number") or ocr_res.batch_number_detected
+                ocr_res.mrp_detected = payload.get("mrp") or ocr_res.mrp_detected
+                ocr_res.ocr_status = "completed"
+            
             db.flush()
 
             # 4. Inventory Item

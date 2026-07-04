@@ -251,6 +251,8 @@ def process_queued_scan(ocr_result_id: UUID, image_path: str, barcode: Optional[
         if result.status == "FAILED_QUALITY":
             ocr_result.failure_reason = result.reject_reason or "Quality check failed"
             ocr_result.ocr_status = "failed"
+        elif ocr_result.ocr_status == "failed" and not ocr_result.failure_reason:
+            ocr_result.failure_reason = "No expiry dates found or low text confidence."
             
         ocr_result.processed_at = datetime.utcnow()
         db.commit()
@@ -259,11 +261,12 @@ def process_queued_scan(ocr_result_id: UUID, image_path: str, barcode: Optional[
         db.rollback()
         logger.error(f"[Worker] Failed background scan task: {exc}", exc_info=True)
         try:
+            import traceback
             db2 = SessionLocal()
             ocr_result = db2.query(OCRResult).filter(OCRResult.id == ocr_result_id).first()
             if ocr_result:
                 ocr_result.ocr_status = "failed"
-                ocr_result.failure_reason = str(exc)
+                ocr_result.failure_reason = str(traceback.format_exc())[:1000]
                 db2.commit()
             db2.close()
         except:
@@ -398,6 +401,10 @@ def get_scan_history(db: Session = Depends(get_db)):
                 "mrp": float(r.mrp_detected) if r.mrp_detected else None,
                 "raw_text": r.raw_text,
                 "confidence": float(r.overall_confidence) if r.overall_confidence else 0.0,
+                "ml_decision": r.inventory_item.ml_decision if hasattr(r, 'inventory_item') and r.inventory_item else None,
+                "ml_confidence": float(r.inventory_item.ml_confidence) if hasattr(r, 'inventory_item') and r.inventory_item and r.inventory_item.ml_confidence else None,
+                "adjusted_remaining": float(r.inventory_item.adjusted_remaining) if hasattr(r, 'inventory_item') and r.inventory_item and r.inventory_item.adjusted_remaining else None,
+                "arrhenius_remaining": float(r.inventory_item.arrhenius_remaining) if hasattr(r, 'inventory_item') and r.inventory_item and r.inventory_item.arrhenius_remaining else None,
             },
             "ocr_blocks": r.extracted_text_blocks
         })
@@ -420,7 +427,7 @@ def get_ocr_result_status(result_id: UUID, db: Session = Depends(get_db)):
         
     return success_response({
         "id": str(r.id),
-        "status": r.ocr_status,
+        "status": r.ocr_status + "-DEBUG",
         "failure_reason": r.failure_reason,
         "image_url": img_url,
         "product": {
@@ -435,6 +442,10 @@ def get_ocr_result_status(result_id: UUID, db: Session = Depends(get_db)):
             "mrp": float(r.mrp_detected) if r.mrp_detected else None,
             "raw_text": r.raw_text,
             "confidence": float(r.overall_confidence) if r.overall_confidence else 0.0,
+            "ml_decision": r.inventory_item.ml_decision if hasattr(r, 'inventory_item') and r.inventory_item else None,
+            "ml_confidence": float(r.inventory_item.ml_confidence) if hasattr(r, 'inventory_item') and r.inventory_item and r.inventory_item.ml_confidence else None,
+            "adjusted_remaining": float(r.inventory_item.adjusted_remaining) if hasattr(r, 'inventory_item') and r.inventory_item and r.inventory_item.adjusted_remaining else None,
+            "arrhenius_remaining": float(r.inventory_item.arrhenius_remaining) if hasattr(r, 'inventory_item') and r.inventory_item and r.inventory_item.arrhenius_remaining else None,
         },
         "ocr_blocks": r.extracted_text_blocks
     }, "OCR status retrieved")

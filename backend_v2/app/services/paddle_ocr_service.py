@@ -16,8 +16,10 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # ── Singleton ─────────────────────────────────────────────────────────────────
-_reader: Optional[any] = None
+import threading
 
+_reader: Optional[any] = None
+_init_lock = threading.Lock()
 
 def _get_reader():
     """
@@ -26,10 +28,12 @@ def _get_reader():
     """
     global _reader
     if _reader is None:
-        import easyocr
-        # Disable verbose warnings
-        logging.getLogger('easyocr').setLevel(logging.WARNING)
-        _reader = easyocr.Reader(['en'], gpu=False)  # Run on CPU stably
+        with _init_lock:
+            if _reader is None:
+                import easyocr
+                # Disable verbose warnings
+                logging.getLogger('easyocr').setLevel(logging.WARNING)
+                _reader = easyocr.Reader(['en'], gpu=False)  # Run on CPU stably
     return _reader
 
 
@@ -55,7 +59,8 @@ def extract_text(image_path: str) -> dict:
     reader = _get_reader()
 
     # EasyOCR readtext returns: [([box], text, confidence), ...]
-    results = reader.readtext(image_path)
+    with _init_lock:
+        results = reader.readtext(image_path)
 
     if not results:
         return {

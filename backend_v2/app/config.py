@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "postgresql://expiry_user:expiry_pass@localhost:5432/expiry_db"
+    DATABASE_URL: str = "postgresql://expiry_user:expiry_pass@localhost:5434/expiry_db"
     APP_ENV: str = "development"
     APP_VERSION: str = "2.0.0"
     SECRET_KEY: str = "change_this_secret_key_phase2"

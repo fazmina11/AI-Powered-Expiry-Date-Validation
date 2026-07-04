@@ -66,6 +66,14 @@ class InventoryItem(Base):
     intake_notes        = Column(Text, nullable=True)
     notes               = Column(Text, nullable=True)
 
+    # ── ML Shelf Life Decision ──────────────────────────────
+    ml_status           = Column(String(20), nullable=True, default="PENDING")
+    ml_decision         = Column(String(20), nullable=True)
+    ml_confidence       = Column(String(10), nullable=True)
+    adjusted_remaining  = Column(String(10), nullable=True)
+    arrhenius_remaining = Column(String(10), nullable=True)
+    ml_processed_at     = Column(DateTime(timezone=True), nullable=True)
+
     # ── Timestamps ────────────────────────────────────────────
     intake_at           = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     created_at          = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

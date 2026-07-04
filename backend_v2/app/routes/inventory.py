@@ -30,6 +30,13 @@ def _inventory_to_dict(item: InventoryItem, remaining_days: Optional[int] = None
         "status": item.operator_decision or item.intake_status or "PENDING",
         "decision_reason": item.notes or item.status_reason,
         "created_at": item.created_at.isoformat() if item.created_at else None,
+        # ML Shelf Life Decision fields
+        "ml_decision": item.ml_decision if hasattr(item, 'ml_decision') else None,
+        "ml_confidence": float(item.ml_confidence) if hasattr(item, 'ml_confidence') and item.ml_confidence else None,
+        "adjusted_remaining": float(item.adjusted_remaining) if hasattr(item, 'adjusted_remaining') and item.adjusted_remaining else None,
+        "arrhenius_remaining": float(item.arrhenius_remaining) if hasattr(item, 'arrhenius_remaining') and item.arrhenius_remaining else None,
+        "ml_status": item.ml_status if hasattr(item, 'ml_status') else None,
+        "ml_processed_at": item.ml_processed_at.isoformat() if hasattr(item, 'ml_processed_at') and item.ml_processed_at else None,
     }
 
 class InventoryIntakeRequest(BaseModel):
