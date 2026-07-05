@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import Link from "next/link"
 
 const AnimatedChatDemo = ({ isActive }: { isActive: boolean }) => {
   const [messages, setMessages] = useState([
@@ -255,58 +256,52 @@ const AnimatedEmailDemo = ({ isActive }: { isActive: boolean }) => {
   )
 }
 
-const AnimatedLeadsDemo = ({ isActive }: { isActive: boolean }) => {
-  const [leads, setLeads] = useState([
-    { name: "Sarah M.", score: 0, qualified: false },
-    { name: "John D.", score: 0, qualified: false },
-    { name: "Mike R.", score: 0, qualified: false },
-  ])
+const AnimatedSafetyAlertsDemo = ({ isActive }: { isActive: boolean }) => {
+  const [step, setStep] = useState(0)
 
   useEffect(() => {
     if (!isActive) return
 
-    leads.forEach((_, index) => {
-      setTimeout(() => {
-        const targetScore = [85, 92, 78][index]
-        const interval = setInterval(() => {
-          setLeads((prev) =>
-            prev.map((lead, i) => {
-              if (i === index && lead.score < targetScore) {
-                const newScore = Math.min(lead.score + 5, targetScore)
-                return {
-                  ...lead,
-                  score: newScore,
-                  qualified: newScore >= 80,
-                }
-              }
-              return lead
-            }),
-          )
-        }, 50)
-
-        setTimeout(() => clearInterval(interval), 1000)
-      }, index * 600)
-    })
+    const interval = setInterval(() => {
+      setStep((prev) => (prev + 1) % 4)
+    }, 2000)
+    return () => clearInterval(interval)
   }, [isActive])
 
   return (
-    <div className="bg-slate-50 rounded-lg p-4 h-32 overflow-hidden">
-      <div className="space-y-2">
-        {leads.map((lead, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <span className="text-xs text-slate-700 w-12">{lead.name}</span>
-            <div className="flex-1 bg-slate-200 rounded-full h-2">
-              <div
-                className={`h-2 rounded-full transition-all duration-500 ${
-                  lead.qualified ? "bg-green-500" : "bg-blue-500"
-                }`}
-                style={{ width: `${lead.score}%` }}
-              />
-            </div>
-            <span className="text-xs font-medium w-8">{lead.score}%</span>
-            {lead.qualified && <span className="text-xs text-green-600">✓</span>}
+    <div className="bg-slate-50 rounded-xl p-3 h-32 overflow-hidden flex flex-col justify-between border border-slate-200 shadow-inner">
+      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex justify-between border-b pb-1 mb-1">
+        <span>Community Safety Feed</span>
+        <span className="text-red-500 flex items-center gap-1 font-bold">
+          <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping"></span>
+          Live
+        </span>
+      </div>
+      <div className="flex-1 flex flex-col justify-center">
+        {step === 0 && (
+          <div className="animate-pulse flex items-center justify-between text-xs p-2 bg-white rounded border border-slate-100 shadow-sm">
+            <span className="font-semibold text-slate-800 truncate max-w-[120px]">Organic Whole Milk</span>
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">Defect Reported</span>
           </div>
-        ))}
+        )}
+        {step === 1 && (
+          <div className="animate-pulse flex items-center justify-between text-xs p-2 bg-white rounded border border-slate-100 shadow-sm">
+            <span className="font-semibold text-slate-800 truncate max-w-[120px]">Organic Whole Milk</span>
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-800">3 Reports Clustered</span>
+          </div>
+        )}
+        {step === 2 && (
+          <div className="animate-pulse flex items-center justify-between text-xs p-2 bg-white rounded border border-slate-100 shadow-sm">
+            <span className="font-semibold text-slate-800 truncate max-w-[120px]">Organic Whole Milk</span>
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800 font-bold">Investigation Open</span>
+          </div>
+        )}
+        {step === 3 && (
+          <div className="animate-bounce flex items-center justify-between text-xs p-2 bg-red-500 text-white rounded shadow-md border border-red-600">
+            <span className="font-bold truncate max-w-[120px] flex items-center gap-1 text-[11px]">⚠️ Recall Alert</span>
+            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-white text-red-600 animate-pulse">Broadcasted</span>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -359,7 +354,13 @@ const AnimatedIntegrationsDemo = ({ isActive }: { isActive: boolean }) => {
   )
 }
 
-const features = [
+const features: Array<{
+  title: string
+  description: string
+  demo: React.ComponentType<{ isActive: boolean }>
+  size: string
+  link?: string
+}> = [
   {
     title: "Barcode Scanning & Recognition",
     description:
@@ -389,11 +390,12 @@ const features = [
     size: "large",
   },
   {
-    title: "Real-Time Alerts & Reporting",
+    title: "Real-Time Safety Alerts & Reporting",
     description:
-      "Instant notifications for expired items, compliance-ready documentation, and detailed inventory decision logs.",
-    demo: AnimatedLeadsDemo,
+      "Crowdsourced defect reporting, instant safety alert broadcasts, automatic issue clustering, and case management.",
+    demo: AnimatedSafetyAlertsDemo,
     size: "medium",
+    link: "/community",
   },
   {
     title: "Inventory System Integration",
@@ -490,29 +492,53 @@ export function FeaturesSection() {
               isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
             }`}
           >
-            {features.map((feature, index) => (
-              <div
-                key={index}
-                className={`group transition-all duration-1000 ${feature.size === "large" ? "md:col-span-2" : ""}`}
-                style={{
-                  transitionDelay: isVisible ? `${300 + index * 100}ms` : "0ms",
-                }}
-                onMouseEnter={() => setActiveDemo(index)}
-                onMouseLeave={() => setActiveDemo(null)}
-              >
-                <div className="bg-white rounded-2xl p-6 sm:p-8 h-full shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 border border-slate-200 hover:border-slate-300">
-                  <div className="mb-6">
-                    <feature.demo isActive={activeDemo === index || isVisible} />
+            {features.map((feature, index) => {
+              const cardContent = (
+                <div className="bg-white rounded-2xl p-6 sm:p-8 h-full shadow-lg hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 border border-slate-200 hover:border-slate-300 flex flex-col justify-between">
+                  <div>
+                    <div className="mb-6">
+                      <feature.demo isActive={activeDemo === index || isVisible} />
+                    </div>
+
+                    <h3 className="text-xl sm:text-2xl font-bold text-slate-900 mb-4 group-hover:text-slate-700 transition-colors duration-300 flex items-center justify-between gap-2">
+                      <span>{feature.title}</span>
+                      {feature.link && (
+                        <span className="inline-flex items-center text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-bold uppercase tracking-wider group-hover:bg-blue-600 group-hover:text-white transition-colors duration-300 shrink-0">
+                          Try Live
+                        </span>
+                      )}
+                    </h3>
+
+                    <p className="text-slate-600 text-sm sm:text-base leading-relaxed">{feature.description}</p>
                   </div>
-
-                  <h3 className="text-xl sm:text-2xl font-bold text-slate-900 mb-4 group-hover:text-slate-700 transition-colors duration-300">
-                    {feature.title}
-                  </h3>
-
-                  <p className="text-slate-600 text-sm sm:text-base leading-relaxed">{feature.description}</p>
+                  {feature.link && (
+                    <div className="text-blue-600 text-sm font-bold group-hover:translate-x-1.5 transition-transform duration-300 mt-4 flex items-center gap-1">
+                      Go to Community Safety Hub &rarr;
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              )
+
+              return (
+                <div
+                  key={index}
+                  className={`group transition-all duration-1000 ${feature.size === "large" ? "md:col-span-2" : ""}`}
+                  style={{
+                    transitionDelay: isVisible ? `${300 + index * 100}ms` : "0ms",
+                  }}
+                  onMouseEnter={() => setActiveDemo(index)}
+                  onMouseLeave={() => setActiveDemo(null)}
+                >
+                  {feature.link ? (
+                    <Link href={feature.link} className="block h-full cursor-pointer">
+                      {cardContent}
+                    </Link>
+                  ) : (
+                    cardContent
+                  )}
+                </div>
+              )
+            })}
           </div>
         </div>
       </div>
