@@ -14,7 +14,7 @@ the ML team and are stored in the ml_predictions table, NOT here.
 
 import uuid
 
-from sqlalchemy import Column, String, Date, DateTime, ForeignKey, Text, Integer
+from sqlalchemy import Column, String, Date, DateTime, ForeignKey, Text, Integer, Float
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -28,12 +28,12 @@ class InventoryItem(Base):
     id                  = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
 
     # ── Source references ─────────────────────────────────────
-    product_id          = Column(UUID(as_uuid=True), ForeignKey("products.id", ondelete="RESTRICT"), nullable=False)
+    product_id          = Column(UUID(as_uuid=True), ForeignKey("products.products.id", ondelete="RESTRICT"), nullable=False)
     barcode_scan_id     = Column(UUID(as_uuid=True), ForeignKey("barcode_scans.id", ondelete="SET NULL"), nullable=True)
     scan_session_id     = Column(UUID(as_uuid=True), ForeignKey("scan_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
     ocr_result_id       = Column(
         UUID(as_uuid=True),
-        ForeignKey("ocr_results.id", ondelete="SET NULL", use_alter=True, name="fk_inventory_items_ocr_result_id"),
+        ForeignKey("ocr.ocr_results.id", ondelete="SET NULL", use_alter=True, name="fk_inventory_items_ocr_result_id"),
         nullable=True,
         index=True,
     )
@@ -69,9 +69,9 @@ class InventoryItem(Base):
     # ── ML Shelf Life Decision ──────────────────────────────
     ml_status           = Column(String(20), nullable=True, default="PENDING")
     ml_decision         = Column(String(20), nullable=True)
-    ml_confidence       = Column(String(10), nullable=True)
-    adjusted_remaining  = Column(String(10), nullable=True)
-    arrhenius_remaining = Column(String(10), nullable=True)
+    ml_confidence       = Column(Float, nullable=True)
+    adjusted_remaining  = Column(Float, nullable=True)
+    arrhenius_remaining = Column(Float, nullable=True)
     ml_processed_at     = Column(DateTime(timezone=True), nullable=True)
 
     # ── Timestamps ────────────────────────────────────────────

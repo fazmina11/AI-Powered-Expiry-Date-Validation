@@ -1,12 +1,12 @@
 {
-    "Date Detection Rate": 84.0,
-    "Exact Match Accuracy": 38.0,
-    "Month Match Accuracy": 68.0,
-    "Status Accuracy": 54.0,
-    "Avg OCR Confidence": 0.7351521189119841,
+    "Date Detection Rate": 98.0,
+    "Exact Match Accuracy": 92.0,
+    "Month Match Accuracy": 96.0,
+    "Status Accuracy": 96.0,
+    "Avg OCR Confidence": 0.8248910892344802,
     "Failure Breakdown": {
-        "undetected": 8,
-        "wrong_date": 23,
-        "wrong_status": 6
+        "undetected": 1,
+        "wrong_date": 3,
+        "wrong_status": 0
     }
 }

@@ -32,6 +32,23 @@ from app.models.audit_log import AuditLog
 from app.models.user import User
 from app.models.product_lookup import ExternalProductCache, ProductLookupLog, UnknownProductRequest
 from app.models.product_question import ProductQuestionLog
+from app.community.models import (
+    CommunityUser,
+    ProductReport,
+    ReportImage,
+    ReportCredibility,
+    IssueCluster,
+    ClusterReport,
+    ClusterLocation,
+    ClusterIntelligence,
+    SafetyAlert,
+    AlertHistory,
+    AlertNotification,
+    InvestigationCase,
+    InvestigationNote,
+    CaseEvidence,
+    CaseTimeline,
+)
 
 __all__ = [
     "Product", "ProductIdentifier", "ProductIngredient",
@@ -41,6 +58,10 @@ __all__ = [
     "InventoryMovement", "ManualReview", "ScanAlert", "AuditLog",
     "ExternalProductEnrichmentLog", "ExternalProductCache",
     "ProductLookupLog", "UnknownProductRequest", "ProductQuestionLog",
-    "StorageContext", "MLPrediction", "User"
+    "StorageContext", "MLPrediction", "User", "CommunityUser",
+    "ProductReport", "ReportImage", "ReportCredibility", "IssueCluster",
+    "ClusterReport", "ClusterLocation", "ClusterIntelligence",
+    "SafetyAlert", "AlertHistory", "AlertNotification",
+    "InvestigationCase", "InvestigationNote", "CaseEvidence", "CaseTimeline"
 ]
 

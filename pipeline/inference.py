@@ -56,20 +56,20 @@ def run_pipeline(image_path, near_expiry_threshold_days=30):
                     raw_text = ocr_result
                     raw_match = match
                     
-        # Fallback to full image
-        if not best_date:
-            detection_used = False
-            ocr_result, conf = try_all_preprocessings(image)
-            parsed, match, method = parse_date(ocr_result)
-            if parsed:
-                best_date = parsed
-                best_confidence = conf
-                best_extraction_method = method
-                raw_text = ocr_result
-                raw_match = match
-            elif conf > best_confidence:
-                best_confidence = conf
-                raw_text = ocr_result
+        # Always evaluate the full image as a safety candidate. YOLO crops are
+        # faster and often cleaner, but full-frame OCR preserves context when a
+        # box is slightly clipped or the detector chooses nearby label text.
+        ocr_result, conf = try_all_preprocessings(image)
+        parsed, match, method = parse_date(ocr_result)
+        if parsed and (not best_date or conf >= best_confidence * 0.90):
+            best_date = parsed
+            best_confidence = conf
+            best_extraction_method = method
+            raw_text = ocr_result
+            raw_match = match
+        elif not best_date and conf > best_confidence:
+            best_confidence = conf
+            raw_text = ocr_result
 
         status, days_rem = calculate_status(best_date, near_expiry_threshold_days)
         

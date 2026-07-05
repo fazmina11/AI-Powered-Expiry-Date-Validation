@@ -14,7 +14,7 @@ class ManualReview(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     scan_session_id = Column(UUID(as_uuid=True), ForeignKey("scan_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
     inventory_item_id = Column(UUID(as_uuid=True), ForeignKey("inventory_items.id", ondelete="CASCADE"), nullable=True, index=True)
-    ocr_result_id = Column(UUID(as_uuid=True), ForeignKey("ocr_results.id", ondelete="SET NULL"), nullable=True, index=True)
+    ocr_result_id = Column(UUID(as_uuid=True), ForeignKey("ocr.ocr_results.id", ondelete="SET NULL"), nullable=True, index=True)
 
     review_type = Column(String(50), nullable=False, default="OCR_CORRECTION")
     original_mfg_date = Column(Date, nullable=True)

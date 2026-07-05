@@ -19,6 +19,7 @@ from app.database import Base
 
 class Product(Base):
     __tablename__ = "products"
+    __table_args__ = {"schema": "products"}
 
     # ── Identity ─────────────────────────────────────────────
     id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
@@ -46,6 +47,7 @@ class Product(Base):
 
     # ── Storage ───────────────────────────────────────────────
     default_storage_type = Column(String(50), nullable=True)
+    warehouse_location = Column(String(100), nullable=True)  # Optional location identifier
                    # ambient | refrigerated | frozen | controlled
     shelf_life_label = Column(String(255), nullable=True)
 
@@ -53,7 +55,7 @@ class Product(Base):
     image_url       = Column(String(500),  nullable=True)
                    # URL to primary product image (populated by image upload)
     product_image_url = Column(String(500), nullable=True)
-    product_source  = Column(String(50),   nullable=False, default="LOCAL_DATABASE")
+    product_source  = Column(String(50),   nullable=False, server_default="LOCAL_DATABASE", default="LOCAL_DATABASE")
     external_source = Column(String(100),  nullable=True)
     external_source_url = Column(Text,     nullable=True)
 

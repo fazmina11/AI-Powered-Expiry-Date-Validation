@@ -36,6 +36,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
 import { productApi, inventoryApi, statsApi, Product, ProductCreate, ProductUpdate, InventoryItem, DashboardStats } from "@/services/apiService";
+import { ProductEditDialog } from "@/components/ProductEditDialog";
 
 // --- Components ---
 
@@ -386,7 +387,7 @@ export default function DashboardPage() {
     }
   };
 
-  const handleAddProduct = async (data: ProductCreate) => {
+  const handleAddProduct = async (data: any) => {
     try {
       setIsSubmitting(true);
       await productApi.create(data);
@@ -539,7 +540,7 @@ export default function DashboardPage() {
                     {expiredItems.map((item) => {
                       const product = products.find(p => p.id === item.product_id);
                       return (
-                        <div key={item.id} className="flex items-center justify-between p-3 bg-red-50/30 border border-red-100 rounded-xl">
+                        <div key={item.id} className="flex items-center justify-between p-3 bg-red-50/30 border border-red-100 rounded-xl cursor-pointer hover:bg-red-50/60 transition-all" onClick={() => product && handleViewProduct(product)}>
                           <div>
                             <p className="font-semibold text-gray-900">{product?.name || "Unknown Product"}</p>
                             <p className="text-xs text-gray-500">Batch: {item.batch_number}</p>
@@ -581,7 +582,7 @@ export default function DashboardPage() {
                     {nearingExpiryItems.map((item) => {
                       const product = products.find(p => p.id === item.product_id);
                       return (
-                        <div key={item.id} className="flex items-center justify-between p-3 bg-amber-50/30 border border-amber-100 rounded-xl">
+                        <div key={item.id} className="flex items-center justify-between p-3 bg-amber-50/30 border border-amber-100 rounded-xl cursor-pointer hover:bg-amber-50/60 transition-all" onClick={() => product && handleViewProduct(product)}>
                           <div>
                             <p className="font-semibold text-gray-900">{product?.name || "Unknown Product"}</p>
                             <p className="text-xs text-gray-500">Batch: {item.batch_number}</p>
@@ -745,20 +746,17 @@ export default function DashboardPage() {
           />
         </Modal>
 
-        <Modal
-          isOpen={isEditModalOpen}
+        <ProductEditDialog
+          open={isEditModalOpen}
+          product={selectedProduct}
           onClose={() => setIsEditModalOpen(false)}
-          title="Edit Product"
-        >
-          {selectedProduct && (
-            <ProductForm
-              initialData={selectedProduct}
-              onSubmit={handleEditProduct}
-              onCancel={() => setIsEditModalOpen(false)}
-              isLoading={isSubmitting}
-            />
-          )}
-        </Modal>
+          onSuccess={(updatedProduct) => {
+            // Optimistic UI update for products list state
+            setProducts((prev) =>
+              prev.map((p) => (p.id === updatedProduct.id ? updatedProduct : p))
+            );
+          }}
+        />
 
         <Modal
           isOpen={isDetailModalOpen}

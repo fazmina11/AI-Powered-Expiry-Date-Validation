@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Edit, Trash2, Eye, Plus, RefreshCw, AlertTriangle, CheckCircle, Clock, XCircle, Loader2, Search, Filter, X } from "lucide-react";
+import { Edit, Trash2, Edit2, Eye, Plus, RefreshCw, AlertTriangle, CheckCircle, Clock, XCircle, Loader2, Search, Filter, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { productApi, inventoryApi, Product, InventoryItem, InventoryIntakeRequest } from "@/services/apiService";
+import { ProductEditDialog } from "@/components/ProductEditDialog";
 
 // Status badge helper
 function StatusBadge({ status }: { status: string }) {
@@ -199,6 +200,8 @@ export default function InventoryPage() {
   const [isIntakeOpen, setIsIntakeOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [isProductEditOpen, setIsProductEditOpen] = useState(false);
   
   // Filter state
   const [showFilters, setShowFilters] = useState(false);
@@ -530,7 +533,12 @@ export default function InventoryPage() {
                       >
                         <td className="py-3 px-4">
                           <div className="font-medium text-gray-900 text-sm">{product?.name || "Unknown"}</div>
-                          <div className="text-xs text-gray-400 font-mono">{product?.sku}</div>
+                          <div className="text-xs text-gray-400 font-mono flex flex-col gap-0.5">
+                            <span>SKU: {product?.sku || "—"}</span>
+                            {product?.warehouse_location && (
+                              <span className="text-indigo-600 dark:text-indigo-400 font-medium">Loc: {product.warehouse_location}</span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 px-4 text-sm text-gray-600 font-mono">{item.batch_number || "—"}</td>
                         <td className="py-3 px-4 text-sm text-gray-600">{item.manufacturing_date || "—"}</td>
@@ -563,6 +571,21 @@ export default function InventoryPage() {
                               title="View Details"
                             >
                               <Eye className="size-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-indigo-500 hover:text-indigo-700"
+                              onClick={(e) => { 
+                                e.stopPropagation(); 
+                                if (product) {
+                                  setSelectedProduct(product);
+                                  setIsProductEditOpen(true);
+                                }
+                              }}
+                              title="Edit Product Details"
+                            >
+                              <Edit2 className="size-4" />
                             </Button>
                             <Button
                               variant="ghost"
@@ -790,6 +813,23 @@ export default function InventoryPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Product Edit Dialog */}
+      <ProductEditDialog
+        open={isProductEditOpen}
+        product={selectedProduct}
+        onClose={() => {
+          setIsProductEditOpen(false);
+          setSelectedProduct(null);
+        }}
+        onSuccess={(updatedProduct) => {
+          // Optimistic UI update for products list map
+          setProducts(prev => ({
+            ...prev,
+            [updatedProduct.id]: updatedProduct
+          }));
+        }}
+      />
 
       {/* New Intake Dialog */}
       <IntakeFormDialog

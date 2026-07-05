@@ -628,7 +628,6 @@ If `status == PRIORITY_SALE` then `REJECT_DAYS <= remaining_days <= WARNING_DAYS
 If `status == ACCEPTED` then `remaining_days > WARNING_DAYS`.
 
 ### Property 8: Barcode uniqueness
-
 No two `Product` rows share the same non-null barcode. Enforced at both the database level (unique index) and service level (409 before insert).
 
 ### Property 9: SKU uniqueness

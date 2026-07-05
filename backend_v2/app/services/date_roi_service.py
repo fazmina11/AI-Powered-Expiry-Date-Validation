@@ -7,11 +7,16 @@ tightly, and cleans up the image for high-accuracy targeted Vision LLM calls.
 
 from __future__ import annotations
 
+import os
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+
 import cv2
 import numpy as np
 import re
 import base64
 import logging
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +64,8 @@ def find_date_regions(image_bgr: np.ndarray) -> list[list[list[int]]]:
 def merge_and_pad_boxes(boxes: list[list[list[int]]], image_shape: tuple[int, ...], padding_ratio: float = 0.4) -> tuple[int, int, int, int] | None:
     """
     Merge nearby candidate boxes into one bounding region (dates and their
-    labels are usually printed close together), then pad generously.
+    labels are usually printed close together).
+    Since dates are usually to the RIGHT or BELOW the keywords, we pad aggressively in those directions.
     """
     if not boxes:
         return None
@@ -70,48 +76,50 @@ def merge_and_pad_boxes(boxes: list[list[list[int]]], image_shape: tuple[int, ..
 
     w = x_max - x_min
     h = y_max - y_min
-    pad_x = max(w * padding_ratio, 20)
-    pad_y = max(h * padding_ratio, 20)
+    
+    # Aggressive padding:
+    # Left: 0.5x width (min 30px)
+    # Right: 3.0x width (min 150px) to catch long dates to the right
+    # Top: 0.5x height (min 30px)
+    # Bottom: 2.0x height (min 100px) to catch dates on the next line
+    pad_left = max(w * 0.5, 30)
+    pad_right = max(w * 3.0, 150)
+    pad_top = max(h * 0.5, 30)
+    pad_bottom = max(h * 2.0, 100)
 
     img_h, img_w = image_shape[:2]
-    x_min_val = max(0, int(x_min - pad_x))
-    y_min_val = max(0, int(y_min - pad_y))
-    x_max_val = min(img_w, int(x_max + pad_x))
-    y_max_val = min(img_h, int(y_max + pad_y))
+    x_min_val = max(0, int(x_min - pad_left))
+    y_min_val = max(0, int(y_min - pad_top))
+    x_max_val = min(img_w, int(x_max + pad_right))
+    y_max_val = min(img_h, int(y_max + pad_bottom))
 
     return (x_min_val, y_min_val, x_max_val, y_max_val)
 
 
 def preprocess_date_crop(crop_bgr: np.ndarray) -> np.ndarray:
     """
-    Upscale + denoise + adaptive threshold. Tuned for dot-matrix/inkjet
-    printed dates on foil or plastic packaging.
+    Returns the original crop with slight contrast enhancement.
+    Excessive upscaling/denoising destroys EasyOCR's ability to read dot-matrix text.
     """
     if crop_bgr.size == 0:
         return crop_bgr
 
-    # Resize (3x Cubic Upscaling)
-    crop = cv2.resize(crop_bgr, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
-    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-
-    # Apply CLAHE to handle reflection/poor lighting
-    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-    gray = clahe.apply(gray)
-
-    # Morphology close to connect disconnected dots (e.g. inkjet/dot-matrix printed dates)
-    kernel = np.ones((2, 2), np.uint8)
-    gray = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel)
-
-    # Adaptive binarization to clean background
-    thresh = cv2.adaptiveThreshold(
-        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY, 31, 15
-    )
-    # Return as 3-channel BGR so it is fully compatible with standard Vision LLM inputs
-    return cv2.cvtColor(thresh, cv2.COLOR_GRAY2BGR)
+    # Mild contrast limited adaptive histogram equalization (CLAHE) on the L channel
+    lab = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    l_enhanced = clahe.apply(l)
+    lab_enhanced = cv2.merge((l_enhanced, a, b))
+    enhanced_bgr = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
+    
+    return enhanced_bgr
 
 
-def extract_date_crop(image_bgr: np.ndarray, barcode: Optional[str] = None) -> tuple[bytes | None, bool]:
+def extract_date_crop(
+    image_bgr: np.ndarray,
+    ocr_blocks: Optional[list[dict]] = None,
+    barcode: Optional[str] = None
+) -> tuple[bytes | None, bool]:
     """
     Main entry point. Returns (crop_bytes, found: bool).
     crop_bytes is a JPEG-encoded, preprocessed crop ready for the Vision LLM.
@@ -124,17 +132,9 @@ def extract_date_crop(image_bgr: np.ndarray, barcode: Optional[str] = None) -> t
     if barcode:
         try:
             import json
-            # Walk up to root /uploads directory
             hints_path = os.path.abspath(
                 os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "sku_roi_hints.json")
             )
-            # Fallback path
-            if not os.path.exists(hints_path):
-                parent_dir = os.path.dirname(hints_path)
-                os.makedirs(parent_dir, exist_ok=True)
-                with open(hints_path, "w") as f:
-                    json.dump({}, f)
-
             if os.path.exists(hints_path):
                 with open(hints_path, "r") as f:
                     hints = json.load(f)
@@ -162,18 +162,30 @@ def extract_date_crop(image_bgr: np.ndarray, barcode: Optional[str] = None) -> t
         except Exception as e:
             logger.warning("[ROI] Failed loading manual SKU ROI hint: %s", e)
 
-    boxes = find_date_regions(image_bgr)
+    # Reconstruct bounding boxes from pre-extracted OCR blocks if available
+    if ocr_blocks is not None:
+        candidate_boxes = []
+        for block in ocr_blocks:
+            text_upper = block.get("text", "").upper().strip()
+            if any(kw in text_upper for kw in DATE_KEYWORDS) or DATE_PATTERN.search(text_upper):
+                x_min = block.get("x_min", 0.0)
+                y_min = block.get("y_min", 0.0)
+                x_max = block.get("x_max", 0.0)
+                y_max = block.get("y_max", 0.0)
+                candidate_boxes.append([[x_min, y_min], [x_max, y_min], [x_max, y_max], [x_min, y_max]])
+        boxes = candidate_boxes
+    else:
+        boxes = find_date_regions(image_bgr)
+
     region = merge_and_pad_boxes(boxes, image_bgr.shape)
 
     if region is None:
         return None, False
 
     x_min, y_min, x_max, y_max = region
-    # Extract tight bounding box region
     crop = image_bgr[y_min:y_max, x_min:x_max]
     processed = preprocess_date_crop(crop)
 
-    # Encode as high-quality JPEG bytes
     success, buffer = cv2.imencode('.jpg', processed, [cv2.IMWRITE_JPEG_QUALITY, 95])
     if not success:
         return None, False
@@ -194,9 +206,6 @@ def is_frame_usable(frame: np.ndarray, blur_threshold: float = 10.0, glare_thres
     if frame is None or frame.size == 0:
         return False, "Empty or invalid frame"
 
-    # 1. Check for Occlusion (hand/fingers covering the label via calibrated HSV skin-tone mask)
-    # Saturation is capped at 145 to ignore highly saturated packaging yellow/orange.
-    # Hue is capped at 17 to filter out yellow/gold (H >= 20).
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     lower_skin = np.array([0, 30, 60], dtype=np.uint8)
     upper_skin = np.array([17, 140, 240], dtype=np.uint8)
@@ -207,15 +216,12 @@ def is_frame_usable(frame: np.ndarray, blur_threshold: float = 10.0, glare_thres
     if skin_ratio > occlusion_threshold:
         return False, f"Obstruction detected (hand/fingers cover {skin_ratio:.1%})"
 
-    # Convert to grayscale for blur and glare analysis
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-    # 2. Check for Blur (Laplacian variance)
     variance = cv2.Laplacian(gray, cv2.CV_64F).var()
     if variance < blur_threshold:
         return False, f"Blurry (variance: {variance:.1f} < {blur_threshold})"
 
-    # 3. Check for Glare (saturated white spots)
     saturated_pixels = np.sum(gray >= 250)
     saturated_ratio = saturated_pixels / total_pixels
     if saturated_ratio > glare_threshold:

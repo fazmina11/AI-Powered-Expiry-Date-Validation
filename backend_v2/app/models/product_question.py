@@ -16,7 +16,7 @@ class ProductQuestionLog(Base):
     extracted_entity = Column(String(255), nullable=True)
     result_status = Column(String(50), nullable=True)
     result_source = Column(String(100), nullable=True)
-    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id", ondelete="SET NULL"), nullable=True, index=True)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("products.products.id", ondelete="SET NULL"), nullable=True, index=True)
     inventory_item_id = Column(UUID(as_uuid=True), ForeignKey("inventory_items.id", ondelete="SET NULL"), nullable=True, index=True)
     request_source = Column(String(100), nullable=False, default="BACKEND_API")
     requested_by = Column(String(150), nullable=True)

@@ -12,6 +12,7 @@ from app.models.product_image import ProductImage
 from app.models.ocr_result import OCRResult
 from app.models.inventory import InventoryItem
 from app.models.audit_log import AuditLog
+from app.services.shelf_life_prediction_service import predict_inventory_item
 
 log = logging.getLogger("scan_service")
 
@@ -84,11 +85,24 @@ class ScanService:
         try:
             # 1. Barcode Scan
             product = db.query(Product).filter(Product.barcode == payload.get("barcode")).first()
+            if not product:
+                product_name = payload.get("product_name") or "Unknown OCR Product"
+                product = Product(
+                    name=product_name,
+                    brand=payload.get("brand"),
+                    description=payload.get("description"),
+                    barcode=payload.get("barcode"),
+                    sku=f"OCR-{uuid.uuid4()}",
+                    is_perishable=True,
+                )
+                db.add(product)
+                db.flush()
+
             b_scan = BarcodeScan(
                 raw_barcode=payload.get("barcode"),
                 scan_session_id=session.id,
                 product_id=product.id if product else None,
-                scan_status="success" if product else "not_found"
+                scan_status="success"
             )
             db.add(b_scan)
             db.flush() # flush to get b_scan.id
@@ -138,10 +152,6 @@ class ScanService:
             db.flush()
 
             # 4. Inventory Item
-            if not product:
-                # If no product, we must abort inventory creation to avoid constraint violation
-                raise ValueError("Product not found in database. Manual creation required.")
-
             inv_item = InventoryItem(
                 product_id=product.id,
                 barcode_scan_id=b_scan.id,
@@ -156,6 +166,7 @@ class ScanService:
             )
             db.add(inv_item)
             db.flush()
+            predict_inventory_item(db, inv_item)
 
             # 5. Audit Log
             audit = AuditLog(

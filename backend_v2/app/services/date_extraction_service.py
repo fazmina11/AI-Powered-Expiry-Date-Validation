@@ -210,7 +210,7 @@ class ExtractionResult:
 
 
 # Digit confusion mapping for OCR errors in dates
-DATE_CANDIDATE = re.compile(r'\b[A-Za-z0-9]{1,4}[/\-.][A-Za-z0-9]{1,4}[/\-.][A-Za-z0-9]{2,4}\b')
+DATE_CANDIDATE = re.compile(r'\b[A-Za-z0-9]{1,4}\s*[/\-.]\s*[A-Za-z0-9]{1,4}\s*[/\-.]\s*[A-Za-z0-9]{2,4}\b')
 DIGIT_CONFUSION = {'O': '0', 'I': '1', 'L': '1', 'S': '5', 'B': '8', 'Z': '2'}
 
 def clean_date_candidate(candidate: str) -> str:
@@ -240,7 +240,17 @@ def extract_fields(raw_text: str) -> ExtractionResult:
     if not raw_text or not raw_text.strip():
         return result
 
-    # ── Pass 0: Clean up date-like substrings of digit confusion (e.g. 09/O6/26 -> 09/06/26)
+    # ── Pass 0.25: Repair specific EasyOCR artifacts
+    # Fix missing second slash due to confusion with '0' (e.g. 17/05026 -> 17/05/26)
+    raw_text = re.sub(r'\b(\d{2}[/\-.]\d{2})0(\d{2,4})\b', r'\1/\2', raw_text)
+    # Fix year '20' misread as '10' or 'C0' (e.g. 06/1027 -> 06/2027)
+    raw_text = re.sub(r'\b(\d{2}[/\-.])(?:10|[CO]0)(\d{2})\b', r'\g<1>20\2', raw_text)
+
+    # ── Pass 0.5: Merge split lines by replacing newlines with spaces
+    # This ensures dates broken across lines (e.g. "31/0\n/26") become contiguous strings ("31/0 /26")
+    raw_text = raw_text.replace('\n', ' ')
+
+    # ── Pass 0.75: Clean up date-like substrings of digit confusion (e.g. 09/O6/26 -> 09/06/26)
     raw_text = clean_date_substrings(raw_text)
 
     # ── Pass 1: collect every date with its position and context label ────────

@@ -21,7 +21,8 @@ def _product_to_dict(p: Product) -> dict:
         "category": p.category,
         "brand": p.brand,
         "description": p.description,
-        "mrp": p.mrp,
+        "mrp": float(p.mrp) if p.mrp is not None else None,
+        "warehouse_location": p.warehouse_location,
         "is_perishable": p.is_perishable,
         "image_url": p.image_url or p.product_image_url,
         "created_at": p.created_at.isoformat() if p.created_at else None,
@@ -34,6 +35,17 @@ class ProductCreate(BaseModel):
     sku: Optional[str] = None
     barcode: str
     category: Optional[str] = None
+    description: Optional[str] = None
+    mrp: Optional[float] = None
+    is_perishable: Optional[bool] = None
+
+class ProductUpdate(BaseModel):
+    name: Optional[str] = None
+    brand: Optional[str] = None
+    sku: Optional[str] = None
+    barcode: Optional[str] = None
+    category: Optional[str] = None
+    warehouse_location: Optional[str] = None
     description: Optional[str] = None
     mrp: Optional[float] = None
     is_perishable: Optional[bool] = None
@@ -82,3 +94,20 @@ def create_product_endpoint(payload: ProductCreate, db: Session = Depends(get_db
     db.commit()
     db.refresh(p)
     return success_response(_product_to_dict(p), "Product created successfully")
+
+@router.patch("/{product_id}")
+def update_product(product_id: UUID, payload: ProductUpdate, db: Session = Depends(get_db)):
+    p = db.query(Product).filter(Product.id == product_id).first()
+    if not p:
+        raise HTTPException(
+            status_code=404,
+            detail={"message": "Product not found", "error_code": "PRODUCT_NOT_FOUND"}
+        )
+    
+    update_data = payload.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(p, field, value)
+    
+    db.commit()
+    db.refresh(p)
+    return success_response(_product_to_dict(p), "Product updated successfully")

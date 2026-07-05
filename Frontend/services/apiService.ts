@@ -13,6 +13,7 @@ export interface Product {
   brand: string | null;
   description: string | null;
   mrp: number | null;
+  warehouse_location: string | null;
   is_perishable: boolean | null;
   image_url: string | null;
   created_at: string;
@@ -29,6 +30,7 @@ export interface ProductCreate {
   manufacturer?: string;
   description?: string;
   mrp?: number;
+  warehouse_location?: string;
   is_perishable?: boolean;
 }
 
@@ -40,6 +42,7 @@ export interface ProductUpdate {
   brand?: string;
   description?: string;
   mrp?: number;
+  warehouse_location?: string;
   is_perishable?: boolean;
 }
 
@@ -59,16 +62,19 @@ export interface InventoryItem {
   arrhenius_remaining?: number | null;
   ml_status?: string | null;
   ml_processed_at?: string | null;
+  operator_decision?: string | null;
+  intake_status?: string | null;
 }
 
 export interface InventoryIntakeRequest {
-  product_id: string;
+  product_id?: string;
   barcode_scan_id?: string;
   ocr_result_id?: string;
   batch_number?: string;
   manufacturing_date?: string;
   expiry_date?: string;
-  status: string;
+  status?: string;
+  barcode?: string;
 }
 
 export interface DashboardStats {
@@ -245,7 +251,7 @@ export const productApi = {
 
   async update(id: string, product: ProductUpdate): Promise<Product> {
     const response = await apiFetch<ApiResponse<Product>>(`/products/${id}`, {
-      method: "PUT",
+      method: "PATCH",
       body: JSON.stringify(product),
     });
     return response.data;

@@ -82,7 +82,7 @@ class ExternalProductEnrichmentLog(Base):
     __tablename__ = "external_product_enrichment_logs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id", ondelete="SET NULL"), nullable=True, index=True)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("products.products.id", ondelete="SET NULL"), nullable=True, index=True)
     barcode_value = Column(String(150), nullable=False, index=True)
     provider = Column(String(100), nullable=False)
     request_url = Column(Text, nullable=True)

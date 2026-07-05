@@ -10,7 +10,11 @@ from __future__ import annotations
 import re
 import logging
 from datetime import datetime
-import zxingcpp
+
+try:
+    import zxingcpp
+except ImportError:
+    zxingcpp = None
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +38,10 @@ def detect_and_decode_datamatrix(image_bgr) -> str | None:
     Attempts to find and decode a GS1 DataMatrix (square 2D barcode) in the image.
     Uses zxing-cpp for stable Windows execution.
     """
+    if zxingcpp is None:
+        logger.warning("[GS1Service] zxing-cpp is not installed; DataMatrix decoding is disabled.")
+        return None
+
     try:
         barcodes = zxingcpp.read_barcodes(image_bgr)
         for bc in barcodes:

@@ -40,6 +40,13 @@ def main():
         print("Make sure Docker is running: docker-compose up -d")
         sys.exit(1)
 
+    print("Creating schemas (IF NOT EXISTS)...")
+    from sqlalchemy import text
+    with engine.begin() as conn:
+        conn.execute(text("CREATE SCHEMA IF NOT EXISTS products"))
+        conn.execute(text("CREATE SCHEMA IF NOT EXISTS ocr"))
+        conn.execute(text("CREATE SCHEMA IF NOT EXISTS community"))
+
     print("Creating tables (IF NOT EXISTS)...")
     Base.metadata.create_all(bind=engine)
 

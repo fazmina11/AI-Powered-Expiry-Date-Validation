@@ -11,6 +11,7 @@ from app.services.scan_service import ScanService
 from app.services.scan_pipeline_service import ScanPipelineService
 from app.models.scan_session import ScanSession
 from app.models.scan_alert import ScanAlert
+from app.services.shelf_life_prediction_service import predict_inventory_item
 
 router = APIRouter()
 
@@ -216,6 +217,7 @@ def process_queued_scan(ocr_result_id: UUID, image_path: str, barcode: Optional[
                 )
                 db.add(inv_item)
                 db.flush()
+                predict_inventory_item(db, inv_item)
                 
                 ocr_result.inventory_item_id = inv_item.id
                 
@@ -247,8 +249,16 @@ def process_queued_scan(ocr_result_id: UUID, image_path: str, barcode: Optional[
                     message=msg
                 ))
                 
-        ocr_result.ocr_status = "completed" if (result.ocr or result.status in ["SUCCESS", "PARTIAL_SUCCESS"]) else "failed"
-        if result.status == "FAILED_QUALITY":
+        ocr_result.ocr_status = "completed" if (result.ocr and result.status in ["SUCCESS", "PARTIAL_SUCCESS"]) else "failed"
+        
+        is_timeout = False
+        if result.ocr and "timed out" in (result.ocr.raw_text or "").lower():
+            is_timeout = True
+
+        if is_timeout:
+            ocr_result.failure_reason = "OCR processing timed out after 5 seconds"
+            ocr_result.ocr_status = "failed"
+        elif result.status == "FAILED_QUALITY":
             ocr_result.failure_reason = result.reject_reason or "Quality check failed"
             ocr_result.ocr_status = "failed"
         elif ocr_result.ocr_status == "failed" and not ocr_result.failure_reason:
@@ -427,9 +437,11 @@ def get_ocr_result_status(result_id: UUID, db: Session = Depends(get_db)):
         
     return success_response({
         "id": str(r.id),
-        "status": r.ocr_status + "-DEBUG",
+        "session_id": str(r.scan_session_id) if r.scan_session_id else None,
+        "status": r.ocr_status,
         "failure_reason": r.failure_reason,
         "image_url": img_url,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
         "product": {
             "name": r.extracted_product_name or (r.product.name if r.product else "Unknown Product"),
             "brand": r.extracted_brand or (r.product.brand if r.product else None),

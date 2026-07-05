@@ -44,7 +44,7 @@ class ProductLookupLog(Base):
     query_type = Column(String(50), nullable=False, index=True)
     result_status = Column(String(50), nullable=False, index=True)
     result_source = Column(String(100), nullable=True)
-    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id", ondelete="SET NULL"), nullable=True, index=True)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("products.products.id", ondelete="SET NULL"), nullable=True, index=True)
     external_cache_id = Column(UUID(as_uuid=True), ForeignKey("external_product_cache.id", ondelete="SET NULL"), nullable=True)
     requested_by = Column(String(150), nullable=True)
     request_source = Column(String(100), nullable=False, default="BACKEND_API")
@@ -75,7 +75,7 @@ class UnknownProductRequest(Base):
     n8n_execution_id = Column(String(150), nullable=True)
     status = Column(String(50), nullable=False, default="PENDING", index=True)
     admin_notes = Column(Text, nullable=True)
-    resolved_product_id = Column(UUID(as_uuid=True), ForeignKey("products.id", ondelete="SET NULL"), nullable=True)
+    resolved_product_id = Column(UUID(as_uuid=True), ForeignKey("products.products.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
     resolved_at = Column(DateTime(timezone=True), nullable=True)
 

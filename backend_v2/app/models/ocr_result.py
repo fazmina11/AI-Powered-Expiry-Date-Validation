@@ -10,11 +10,14 @@ from app.database import Base
 
 class OCRResult(Base):
     __tablename__ = "ocr_results"
+    __table_args__ = {"schema": "ocr"}
+    # Optional URL if images are stored externally (e.g., S3)
+    image_url = Column(String(500), nullable=True)
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
 
     product_image_id = Column(UUID(as_uuid=True), ForeignKey("product_images.id", ondelete="CASCADE"), nullable=False)
-    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id", ondelete="SET NULL"), nullable=True, index=True)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("products.products.id", ondelete="SET NULL"), nullable=True, index=True)
     scan_session_id = Column(UUID(as_uuid=True), ForeignKey("scan_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
     inventory_item_id = Column(UUID(as_uuid=True), ForeignKey("inventory_items.id", ondelete="SET NULL"), nullable=True)
 

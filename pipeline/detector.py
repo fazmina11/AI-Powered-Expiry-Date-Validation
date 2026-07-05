@@ -1,12 +1,22 @@
 import os
 import cv2
 import numpy as np
-from ultralytics import YOLO
+
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+YOLO_CONFIG_PARENT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".ultralytics"))
+os.makedirs(YOLO_CONFIG_PARENT, exist_ok=True)
+os.environ.setdefault("YOLO_CONFIG_DIR", YOLO_CONFIG_PARENT)
+
+try:
+    from ultralytics import YOLO
+except ImportError:
+    YOLO = None
 
 # Load model globally to avoid reloading on every request
 MODEL_PATH = os.path.join(os.path.dirname(__file__), '..', 'models', 'expiry_detector.pt')
 try:
-    detector_model = YOLO(MODEL_PATH)
+    detector_model = YOLO(MODEL_PATH) if YOLO and os.path.exists(MODEL_PATH) else None
 except Exception as e:
     detector_model = None
     print(f"Warning: Could not load YOLO model from {MODEL_PATH}. Error: {e}")
@@ -28,7 +38,7 @@ def detect_date_region(image_path_or_array):
         image = image_path_or_array
 
     try:
-        results = detector_model(image, verbose=False)
+        results = detector_model(image, conf=0.05, iou=0.40, max_det=3, verbose=False)
         boxes_out = []
         for result in results:
             boxes = result.boxes
@@ -57,8 +67,10 @@ def crop_date_regions(image_path_or_array, boxes):
     for (x1, y1, x2, y2, _) in boxes:
         # Ensure coordinates are within image boundaries
         h, w = image.shape[:2]
-        x1, y1 = max(0, x1), max(0, y1)
-        x2, y2 = min(w, x2), min(h, y2)
+        pad_x = max(8, int((x2 - x1) * 0.12))
+        pad_y = max(8, int((y2 - y1) * 0.20))
+        x1, y1 = max(0, x1 - pad_x), max(0, y1 - pad_y)
+        x2, y2 = min(w, x2 + pad_x), min(h, y2 + pad_y)
         
         crop = image[y1:y2, x1:x2]
         if crop.size > 0:

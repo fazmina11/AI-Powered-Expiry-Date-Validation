@@ -25,7 +25,11 @@ from typing import Optional
 
 import cv2
 import numpy as np
-import zxingcpp
+
+try:
+    import zxingcpp
+except ImportError:
+    zxingcpp = None
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +48,9 @@ class BarcodeService:
         pyzbar causes SIGSEGV on M1/M2/M3 due to a zbar C library alignment bug.
         """
         if frame is None or frame.size == 0:
+            return None
+        if zxingcpp is None:
+            logger.warning("[BarcodeService] zxing-cpp is not installed; barcode detection is disabled.")
             return None
 
         for stage_name, processed_frame in self._generate_preprocessed_frames(frame):

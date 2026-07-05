@@ -13,6 +13,9 @@ import os
 import logging
 from typing import Optional
 
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+
 logger = logging.getLogger(__name__)
 
 # ── Singleton ─────────────────────────────────────────────────────────────────
@@ -39,7 +42,7 @@ def _get_reader():
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def extract_text(image_path: str) -> dict:
+def extract_text(image_path: str, canvas_size: int = 1280) -> dict:
     """
     Run EasyOCR on a single image and return aggregated raw text.
 
@@ -60,7 +63,8 @@ def extract_text(image_path: str) -> dict:
 
     # EasyOCR readtext returns: [([box], text, confidence), ...]
     with _init_lock:
-        results = reader.readtext(image_path)
+        # Pass canvas_size to optimize CPU performance without losing accuracy
+        results = reader.readtext(image_path, canvas_size=canvas_size)
 
     if not results:
         return {

@@ -14,6 +14,9 @@ import sys
 from typing import Optional, Dict, Any, Tuple
 from dataclasses import dataclass
 
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+
 # Reconfigure standard output/error to use UTF-8 to handle unicode progress bars (e.g. EasyOCR model downloads)
 if hasattr(sys.stdout, 'reconfigure'):
     try:

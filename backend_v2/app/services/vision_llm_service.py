@@ -338,10 +338,15 @@ def extract_structured_fields_via_llm(
     Returns StructuredExtractionResult, or None if no keys are configured.
     """
     gemini_key = os.environ.get("GEMINI_API_KEY")
+    if gemini_key and (not gemini_key.startswith("AIzaSy") or len(gemini_key) < 15):
+        gemini_key = None
+
     openai_key = os.environ.get("OPENAI_API_KEY")
+    if openai_key and not openai_key.startswith("sk-"):
+        openai_key = None
 
     if not gemini_key and not openai_key:
-        logger.info("[VisionLLM] No API keys configured. Skipping Vision LLM.")
+        logger.info("[VisionLLM] No valid API keys configured. Skipping Vision LLM.")
         return None
 
     # Load image bytes from path or base64
@@ -389,11 +394,17 @@ def extract_structured_fields_from_text(
         return None
 
     gemini_key = os.environ.get("GEMINI_API_KEY")
+    if gemini_key and (not gemini_key.startswith("AIzaSy") or len(gemini_key) < 15):
+        gemini_key = None
+
     openai_key = os.environ.get("OPENAI_API_KEY")
+    if openai_key and not openai_key.startswith("sk-"):
+        openai_key = None
+
     hf_key = os.environ.get("HUGGINGFACE_API_KEY")
 
     if not gemini_key and not openai_key and not hf_key:
-        logger.info("[TextLLM] No API keys configured. Skipping text LLM.")
+        logger.info("[TextLLM] No valid API keys configured. Skipping text LLM.")
         return None
 
     try:

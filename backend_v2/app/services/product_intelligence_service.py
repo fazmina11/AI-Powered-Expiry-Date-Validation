@@ -122,6 +122,12 @@ class ProductIntelligenceService:
         if ocr_data:
             if isinstance(ocr_data, dict):
                 detected_fields = ocr_data.get('detected_fields', {})
+                if not product_info.name:
+                    product_info.name = ocr_data.get('product_name') or detected_fields.get('product_name')
+                if not product_info.brand:
+                    product_info.brand = ocr_data.get('brand') or detected_fields.get('brand')
+                if not product_info.weight:
+                    product_info.weight = ocr_data.get('weight') or detected_fields.get('weight')
                 if not manufacturing_info.manufacturing_date:
                     manufacturing_info.manufacturing_date = parse_date_safe(detected_fields.get('mfg_date') or ocr_data.get('mfg_date'))
                 if not expiry_info.expiry_date:
@@ -145,6 +151,12 @@ class ProductIntelligenceService:
                 ocr_info.detected_fields = detected_fields
             else:
                 detected_fields = getattr(ocr_data, 'detected_fields', {})
+                if not product_info.name:
+                    product_info.name = getattr(ocr_data, 'product_name', None) or detected_fields.get('product_name')
+                if not product_info.brand:
+                    product_info.brand = getattr(ocr_data, 'brand', None) or detected_fields.get('brand')
+                if not product_info.weight:
+                    product_info.weight = getattr(ocr_data, 'weight', None) or detected_fields.get('weight')
                 if not manufacturing_info.manufacturing_date:
                     manufacturing_info.manufacturing_date = parse_date_safe(detected_fields.get('mfg_date') or getattr(ocr_data, 'mfg_date', None))
                 if not expiry_info.expiry_date:

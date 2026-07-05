@@ -22,7 +22,7 @@ class BarcodeScan(Base):
     id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
 
     # ── Resolved product (nullable — barcode may not match any product) ──
-    product_id      = Column(UUID(as_uuid=True), ForeignKey("products.id", ondelete="SET NULL"), nullable=True)
+    product_id      = Column(UUID(as_uuid=True), ForeignKey("products.products.id", ondelete="SET NULL"), nullable=True)
     scan_session_id = Column(UUID(as_uuid=True), ForeignKey("scan_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
 
     # ── Raw scan data ─────────────────────────────────────────

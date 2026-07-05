@@ -154,6 +154,7 @@ export default function ScanPage() {
 
   // Auto-Scan & Queue Settings
   const [autoScanEnabled, setAutoScanEnabled] = useState(true);
+  const [detectionPaused, setDetectionPaused] = useState(false);
   const [isAnalyzingFrame, setIsAnalyzingFrame] = useState(false);
   const lastScanTime = useRef(0);
 
@@ -238,7 +239,7 @@ export default function ScanPage() {
   }, [session, toast]);
 
   /* ── Barcode scanner hook ── */
-  const barcodeScanActive = (flowStep === "scanning" || flowStep === "barcode_ok") && camStatus === "active";
+  const barcodeScanActive = !detectionPaused && (flowStep === "scanning" || flowStep === "barcode_ok") && camStatus === "active";
   const { scanState } = useBarcodeScanner({
     videoRef,
     active: barcodeScanActive,
@@ -249,6 +250,11 @@ export default function ScanPage() {
   /* ── Start session ── */
   const handleStartScan = useCallback(async () => {
     setFlowStep("starting");
+    setDetectionPaused(false);
+    setAutoScanEnabled(true);
+    setDetectedBarcode("");
+    setProduct(null);
+    barcodeHandled.current = false;
     try {
       const res = await scanFlowApi.startScan();
       setSession({ id: res.session_id });
@@ -268,7 +274,7 @@ export default function ScanPage() {
 
   /* ── Auto-Capture Loop (Quality-Gate Driven) ── */
   useEffect(() => {
-    if (flowStep === "idle" || !videoRef.current || !autoScanEnabled || camStatus !== "active") {
+    if (flowStep === "idle" || detectionPaused || !videoRef.current || !autoScanEnabled || camStatus !== "active") {
       return;
     }
 
@@ -366,11 +372,15 @@ export default function ScanPage() {
 
     intervalId = setInterval(analyzeFrame, 600);
     return () => clearInterval(intervalId);
-  }, [flowStep, camStatus, session, detectedBarcode, product, autoScanEnabled, isAnalyzingFrame, pollScanStatus]);
+  }, [flowStep, camStatus, session, detectedBarcode, product, autoScanEnabled, detectionPaused, isAnalyzingFrame, pollScanStatus]);
 
   /* ── Manual Click-to-Capture Fallback ── */
   const handleManualCapture = useCallback(async () => {
     if (!session) return;
+    if (detectionPaused) {
+      toast({ title: "Detection is stopped", description: "Resume detection before capturing another product.", variant: "warning" as any });
+      return;
+    }
     setFlowStep("capturing");
     
     // Create canvas capture
@@ -437,7 +447,29 @@ export default function ScanPage() {
       toast({ title: "Capture failed", description: err.message, variant: "destructive" });
       setFlowStep("barcode_ok");
     }
-  }, [session, detectedBarcode, product, toast, pollScanStatus]);
+  }, [session, detectionPaused, detectedBarcode, product, toast, pollScanStatus]);
+
+  const handleToggleDetection = useCallback(() => {
+    setDetectionPaused((prev) => {
+      const next = !prev;
+      if (next) {
+        setAutoScanEnabled(false);
+        setIsAnalyzingFrame(false);
+        toast({
+          title: "Detection stopped",
+          description: "Barcode reading and frame auto-capture are paused.",
+        });
+      } else {
+        setAutoScanEnabled(true);
+        barcodeHandled.current = false;
+        toast({
+          title: "Detection resumed",
+          description: "Barcode reading and clear-frame capture are active again.",
+        });
+      }
+      return next;
+    });
+  }, [toast]);
 
   /* ── Open Inspection Modal ── */
   const handleOpenInspect = (item: OCRHistoryItem) => {
@@ -508,6 +540,8 @@ export default function ScanPage() {
     setFlowStep("idle");
     setDetectedBarcode("");
     setProduct(null);
+    setDetectionPaused(false);
+    setAutoScanEnabled(true);
     barcodeHandled.current = false;
   }, [session, stopStream]);
 
@@ -557,11 +591,31 @@ export default function ScanPage() {
           </h1>
         </div>
         <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleToggleDetection}
+            className={`border-slate-800 rounded-lg gap-2 text-xs transition-colors duration-200 ${detectionPaused ? 'bg-red-950/30 text-red-300 border-red-900/60 hover:bg-red-950/50' : 'bg-blue-950/30 text-blue-300 border-blue-900/60 hover:bg-blue-950/50'}`}
+          >
+            {detectionPaused ? (
+              <>
+                <Play className="size-3.5 fill-red-300" />
+                Resume Detection
+              </>
+            ) : (
+              <>
+                <Pause className="size-3.5 fill-blue-300" />
+                Stop Detection
+              </>
+            )}
+          </Button>
+
           {/* Auto Scan Toggle */}
           <Button
             variant="outline"
             size="sm"
             onClick={() => setAutoScanEnabled(!autoScanEnabled)}
+            disabled={detectionPaused}
             className={`border-slate-800 rounded-lg gap-2 text-xs transition-colors duration-200 ${autoScanEnabled ? 'bg-emerald-950/40 text-emerald-400 border-emerald-900/60 hover:bg-emerald-950/60' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'}`}
           >
             {autoScanEnabled ? (
@@ -616,11 +670,19 @@ export default function ScanPage() {
                 onSwitch={switchCamera}
                 imagePreview={null}
               >
-                {/* Barcode scanner boundaries */}
-                <BarcodeScannerOverlay
-                  scanState={scanState}
-                  detectedCode={detectedBarcode}
-                />
+                {!detectionPaused ? (
+                  <BarcodeScannerOverlay
+                    scanState={scanState}
+                    detectedCode={detectedBarcode}
+                  />
+                ) : (
+                  <div className="absolute inset-0 bg-slate-950/55 backdrop-blur-[1px] flex items-center justify-center text-center">
+                    <div className="rounded-lg border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-200 shadow-lg">
+                      Detection stopped
+                      <span className="block text-xs text-red-300/80 mt-1">Resume detection to read barcodes and capture products.</span>
+                    </div>
+                  </div>
+                )}
               </CameraView>
             </div>
 
@@ -629,13 +691,15 @@ export default function ScanPage() {
               <div className="flex items-center gap-2 text-xs text-slate-400">
                 <Info className="size-4 text-blue-500 shrink-0" />
                 <span>
-                  {autoScanEnabled 
+                  {detectionPaused
+                    ? "Detection is stopped. Camera stays open, but barcode reading and captures are paused."
+                    : autoScanEnabled 
                     ? "Keep camera steady. Images are auto-snapped once clear and sent to the queue." 
                     : "Align product label details and click the button to capture."}
                 </span>
               </div>
               
-              {!autoScanEnabled && (
+              {!autoScanEnabled && !detectionPaused && (
                 <Button
                   onClick={handleManualCapture}
                   className="bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-6 py-2 text-sm gap-2"
@@ -782,13 +846,16 @@ export default function ScanPage() {
           <DialogHeader>
             <DialogTitle className="text-lg font-bold text-slate-100">Review OCR Extraction</DialogTitle>
             <DialogDescription className="text-xs text-slate-400">
-              Verify the parsed date fields and confirm to save the item to your inventory database.
+              View the captured product image, inspect OCR logs, and confirm completed scans before saving.
             </DialogDescription>
           </DialogHeader>
 
           {activeItem && (
-            <Tabs defaultValue={activeItem.status === "completed" ? "details" : "logs"} className="w-full mt-3">
+            <Tabs defaultValue={activeItem.status === "completed" ? "details" : "image"} className="w-full mt-3">
               <TabsList className="bg-slate-950 border border-slate-800 p-0.5 rounded-lg mb-4 w-full flex justify-start">
+                <TabsTrigger value="image" className="text-xs data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+                  Product Image
+                </TabsTrigger>
                 {activeItem.status === "completed" && (
                   <TabsTrigger value="details" className="text-xs data-[state=active]:bg-blue-600 data-[state=active]:text-white">
                     Extraction Details
@@ -798,6 +865,36 @@ export default function ScanPage() {
                   Pipeline Execution Logs
                 </TabsTrigger>
               </TabsList>
+
+              <TabsContent value="image" className="mt-0 focus-visible:ring-0">
+                <div className="flex flex-col gap-3">
+                  <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-950">
+                    {activeItem.image_url ? (
+                      <img
+                        src={getFullImageUrl(activeItem.image_url)}
+                        alt={`${activeItem.product.name || "Scanned product"} capture`}
+                        className="max-h-[62vh] w-full object-contain bg-black"
+                      />
+                    ) : (
+                      <div className="flex min-h-[280px] items-center justify-center text-sm text-slate-500">
+                        No product image is available for this queue item.
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+                    <span className="truncate">
+                      {activeItem.product.name || "Detecting product"}
+                      {activeItem.product.barcode ? ` | ${activeItem.product.barcode}` : ""}
+                    </span>
+                    <span className={`font-semibold uppercase tracking-wider ${
+                      activeItem.status === 'completed' ? 'text-emerald-400' :
+                      activeItem.status === 'failed' ? 'text-red-400' : 'text-blue-400'
+                    }`}>
+                      {activeItem.status}
+                    </span>
+                  </div>
+                </div>
+              </TabsContent>
 
               <TabsContent value="details" className="mt-0 focus-visible:ring-0">
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
@@ -890,7 +987,7 @@ export default function ScanPage() {
                               <div className="flex justify-between items-center text-xs">
                                 <span className="text-slate-500">Confidence:</span>
                                 <span className="text-slate-300">
-                                  {(activeItem.extracted_data.ml_confidence * 100).toFixed(1)}%
+                                  {((activeItem.extracted_data.ml_confidence ?? 0) * 100).toFixed(1)}%
                                 </span>
                               </div>
                               <div className="flex justify-between items-center text-xs">

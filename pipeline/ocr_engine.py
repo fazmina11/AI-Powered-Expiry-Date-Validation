@@ -1,11 +1,19 @@
 import cv2
 import numpy as np
-import easyocr
 import math
+import os
 
-# Task 6: Initialize with Hindi and English
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+
 try:
-    reader = easyocr.Reader(['en', 'hi'], gpu=True)
+    import easyocr
+except ImportError:
+    easyocr = None
+
+# Initialize once. Keep this CPU/English-only for stable local evaluation speed.
+try:
+    reader = easyocr.Reader(['en'], gpu=False) if easyocr else None
 except Exception as e:
     print(f"Warning: EasyOCR initialization failed. {e}")
     reader = None
@@ -19,7 +27,10 @@ def deskew(image):
     if lines is not None:
         angles = []
         for line in lines:
-            x1, y1, x2, y2 = line[0]
+            coords = np.asarray(line).reshape(-1)
+            if coords.size < 4:
+                continue
+            x1, y1, x2, y2 = coords[:4]
             angle = math.degrees(math.atan2(y2 - y1, x2 - x1))
             if -15 <= angle <= 15:
                 angles.append(angle)
@@ -66,18 +77,36 @@ def extract_text(image):
 
 def try_all_preprocessings(image):
     """
-    Try different preprocessing techniques and return the result with highest confidence.
+    Try different preprocessing techniques and return the best OCR text.
+    Keep unique text from every successful view so downstream date parsing can
+    still see a valid date from a lower-confidence preprocessing pass.
     """
     best_text = ""
     best_conf = 0.0
+    seen_texts = []
     
     methods = ['none', 'clahe', 'otsu', 'invert', 'deskew']
     
     for method in methods:
         processed_img = preprocess_image(image, method)
         text, conf = extract_text(processed_img)
+        cleaned_text = " ".join(text.split())
+        if cleaned_text and cleaned_text not in seen_texts:
+            seen_texts.append(cleaned_text)
         if conf > best_conf:
             best_conf = conf
             best_text = text
+        if conf >= 0.70 and cleaned_text:
+            try:
+                from pipeline.date_parser import parse_date
+
+                parsed, _match, _method = parse_date(cleaned_text)
+                if parsed:
+                    break
+            except Exception:
+                pass
             
+    if seen_texts:
+        return "\n".join(seen_texts), best_conf
+
     return best_text, best_conf

@@ -33,6 +33,13 @@ from app.routes.scan import router as scan_router
 from app.routes.alerts import router as alerts_router
 from app.routes.reviews import router as reviews_router
 from app.routes import product_lookup_routes, product_question_routes
+from app.community.routes.user_routes import router as community_users_router
+from app.community.routes.report_routes import router as community_reports_router
+from app.community.routes.credibility_routes import router as community_credibility_router
+from app.community.routes.cluster_routes import router as community_clusters_router
+from app.community.routes.intelligence_routes import router as community_intelligence_router
+from app.community.routes.alert_routes import router as community_alerts_router
+from app.community.routes.case_routes import router as community_cases_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -51,7 +58,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origin_regex="https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -72,6 +79,13 @@ app.include_router(scan_session_router, prefix="/api/v1/session", tags=["Session
 app.include_router(scan_router, prefix="/api/scan", tags=["Scan"])
 app.include_router(product_lookup_routes.router, prefix="/api/v1", tags=["Product Lookup"])
 app.include_router(product_question_routes.router, prefix="/api/v1", tags=["Product Questions"])
+app.include_router(community_users_router, prefix="/api/v1/community", tags=["Community Users"])
+app.include_router(community_reports_router, prefix="/api/v1/community", tags=["Community Reports"])
+app.include_router(community_credibility_router, prefix="/api/v1/community", tags=["Report Credibility"])
+app.include_router(community_clusters_router, prefix="/api/v1/community", tags=["Issue Clusters"])
+app.include_router(community_intelligence_router, prefix="/api/v1/community", tags=["Community Intelligence"])
+app.include_router(community_alerts_router, prefix="/api/v1/community", tags=["Safety Alerts"])
+app.include_router(community_cases_router, prefix="/api/v1/community", tags=["Investigation Cases"])
 
 
 @app.get("/health", tags=["health"])

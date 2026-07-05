@@ -2,22 +2,22 @@ import re
 
 # Date formats patterns
 # DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
-DATE_DMY_PATTERN = re.compile(r'\b(0?[1-9]|[12][0-9]|3[01])([\/\-\.])(0?[1-9]|1[0-2])\2(20\d{2})\b')
+DATE_DMY_PATTERN = re.compile(r'\b(0?[1-9]|[12][0-9]|3[01])\s*([\/\-\.])\s*(0?[1-9]|1[0-2])\s*\2\s*(20\d{2})\b')
 
 # DD/MM/YY or DD-MM-YY
-DATE_DMY_SHORT_PATTERN = re.compile(r'\b(0?[1-9]|[12][0-9]|3[01])([\/\-\.])(0?[1-9]|1[0-2])\2(\d{2})\b')
+DATE_DMY_SHORT_PATTERN = re.compile(r'\b(0?[1-9]|[12][0-9]|3[01])\s*([\/\-\.])\s*(0?[1-9]|1[0-2])\s*\2\s*(\d{2})\b')
 
 # MM/DD/YYYY or MM-DD-YYYY
-DATE_MDY_PATTERN = re.compile(r'\b(0?[1-9]|1[0-2])([\/\-\.])(0?[1-9]|[12][0-9]|3[01])\2(20\d{2})\b')
+DATE_MDY_PATTERN = re.compile(r'\b(0?[1-9]|1[0-2])\s*([\/\-\.])\s*(0?[1-9]|[12][0-9]|3[01])\s*\2\s*(20\d{2})\b')
 
 # MM/DD/YY or MM-DD-YY
-DATE_MDY_SHORT_PATTERN = re.compile(r'\b(0?[1-9]|1[0-2])([\/\-\.])(0?[1-9]|[12][0-9]|3[01])\2(\d{2})\b')
+DATE_MDY_SHORT_PATTERN = re.compile(r'\b(0?[1-9]|1[0-2])\s*([\/\-\.])\s*(0?[1-9]|[12][0-9]|3[01])\s*\2\s*(\d{2})\b')
 
 # YYYY/MM/DD or YYYY-MM-DD
-DATE_YMD_PATTERN = re.compile(r'\b(20\d{2})([\/\-\.])(0?[1-9]|1[0-2])\2(0?[1-9]|[12][0-9]|3[01])\b')
+DATE_YMD_PATTERN = re.compile(r'\b(20\d{2})\s*([\/\-\.])\s*(0?[1-9]|1[0-2])\s*\2\s*(0?[1-9]|[12][0-9]|3[01])\b')
 
 # MM/YYYY or MM-YYYY
-DATE_MY_PATTERN = re.compile(r'\b(0?[1-9]|1[0-2])(?:[\/\-\.])(20\d{2})\b')
+DATE_MY_PATTERN = re.compile(r'\b(0?[1-9]|1[0-2])\s*(?:[\/\-\.])\s*(20\d{2})\b')
 
 # DD MMM YYYY or DD-MMM-YYYY (e.g. 12 May 2026, 12-Jan-2025)
 DATE_TEXTUAL_DMY_PATTERN = re.compile(

@@ -60,18 +60,24 @@ export function useBarcodeScanner({ videoRef, active, onDetected, intervalMs = 2
 
         if (video && video.readyState >= video.HAVE_ENOUGH_DATA && video.videoWidth > 0) {
           try {
-            const result = await readerRef.current!.decodeFromVideoElement(video);
-            if (result && result.getText() && !detectedRef.current) {
-              detectedRef.current = true;
-              setScanState("found");
-              onDetected(result.getText());
-              return; // Stop loop after detection
+            const canvas = document.createElement("canvas");
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext("2d");
+            if (ctx) {
+              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+              // Decode the single frame captured in the canvas.
+              // This is a one-shot execution and does not spawn background loops in ZXing.
+              const result = readerRef.current!.decode(canvas as any);
+              if (result && result.getText() && !detectedRef.current) {
+                detectedRef.current = true;
+                setScanState("found");
+                onDetected(result.getText());
+                return; // Stop loop after detection
+              }
             }
           } catch (err) {
-            // NotFoundException is expected when no barcode in frame — ignore it
-            if (!(err instanceof NotFoundException)) {
-              // Only log unexpected errors
-            }
+            // NotFoundException is expected when no barcode in frame — ignore it silently
           }
         }
       }

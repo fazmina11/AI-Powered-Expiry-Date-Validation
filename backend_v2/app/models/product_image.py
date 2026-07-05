@@ -20,7 +20,7 @@ class ProductImage(Base):
     __tablename__ = "product_images"
 
     id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    product_id      = Column(UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    product_id      = Column(UUID(as_uuid=True), ForeignKey("products.products.id", ondelete="CASCADE"), nullable=False)
     scan_session_id = Column(UUID(as_uuid=True), ForeignKey("scan_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
 
     # ── File info ─────────────────────────────────────────────
