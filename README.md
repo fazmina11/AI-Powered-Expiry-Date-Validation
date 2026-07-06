@@ -72,6 +72,15 @@ cd AI-Powered-Expiry-Date-Validation
 
 Run these from separate terminals.
 
+Quick local startup checklist:
+
+1. Start PostgreSQL from `backend_v2/`.
+2. Start the FastAPI backend on port `8001`.
+3. Start the Next.js frontend on port `3000`.
+4. Open `http://localhost:3000`.
+
+The frontend does not connect to PostgreSQL directly. Browser code calls the FastAPI backend, and FastAPI connects to PostgreSQL with `DATABASE_URL`.
+
 ### 1. Start PostgreSQL And pgAdmin
 
 ```bash
@@ -159,6 +168,7 @@ Create `Frontend/.env.local`:
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:8001/api/v1
 NEXT_PUBLIC_AUTH_URL=http://localhost:8001
+NEXT_PUBLIC_SCAN_URL=http://localhost:8001/api/scan
 ```
 
 Then start Next.js:
@@ -172,6 +182,33 @@ npm run dev
 Frontend URL:
 
 - App: `http://localhost:3000`
+
+### How The Frontend, Backend, And Database Connect
+
+```text
+Next.js frontend
+  -> NEXT_PUBLIC_API_URL / NEXT_PUBLIC_AUTH_URL / NEXT_PUBLIC_SCAN_URL
+  -> FastAPI backend on http://localhost:8001
+  -> DATABASE_URL
+  -> PostgreSQL on localhost:5434
+```
+
+Use these local values for the active stack:
+
+| Layer | Setting | Local value |
+| --- | --- | --- |
+| Frontend API calls | `NEXT_PUBLIC_API_URL` | `http://localhost:8001/api/v1` |
+| Frontend auth calls | `NEXT_PUBLIC_AUTH_URL` | `http://localhost:8001` |
+| Frontend scan-session calls | `NEXT_PUBLIC_SCAN_URL` | `http://localhost:8001/api/scan` |
+| Backend database connection | `DATABASE_URL` | `postgresql://expiry_user:expiry_pass@localhost:5434/expiry_db` |
+
+If the frontend loads but dashboard data is empty or requests fail, check these in order:
+
+1. PostgreSQL is running: `cd backend_v2 && docker compose ps`
+2. Backend health works: open `http://localhost:8001/health`
+3. Frontend env values are present in `Frontend/.env.local`
+4. Next.js was restarted after changing `.env.local`
+5. The browser network tab shows calls going to `localhost:8001`
 
 ## Start The Public Tunnel
 
@@ -196,6 +233,7 @@ If the backend tunnel URL is `https://your-backend.ngrok-free.app`, update `Fron
 ```env
 NEXT_PUBLIC_API_URL=https://your-backend.ngrok-free.app/api/v1
 NEXT_PUBLIC_AUTH_URL=https://your-backend.ngrok-free.app
+NEXT_PUBLIC_SCAN_URL=https://your-backend.ngrok-free.app/api/scan
 ```
 
 Restart the frontend after changing `.env.local`.
