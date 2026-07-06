@@ -34,3 +34,19 @@ class DuplicateBarcodeError(Exception):
 class InvalidStatusError(Exception):
     """Raised when an unknown status string is passed as a filter."""
     error_code = "INVALID_STATUS"
+
+
+class FinancialProfileNotFoundError(Exception):
+    """Raised when a financial profile lookup by product_id returns nothing."""
+    error_code = "FINANCIAL_PROFILE_NOT_FOUND"
+
+
+class DuplicateFinancialProfileError(Exception):
+    """Raised when a financial profile already exists for a product."""
+    error_code = "DUPLICATE_FINANCIAL_PROFILE"
+
+
+class InvalidPricingError(Exception):
+    """Raised when validation fails (e.g. MRP <= purchase_price)."""
+    error_code = "INVALID_PRICING"
+

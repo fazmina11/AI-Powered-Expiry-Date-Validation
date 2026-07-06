@@ -168,3 +168,91 @@ def test_status_route_no_collision_with_id(client):
     _create_product(client)
     _intake(client, (TODAY + timedelta(days=120)).isoformat())
     assert client.get(_i("/status/ACCEPTED")).status_code != 422
+
+
+# ── Phase 2 Financial Autonomy Tests ─────────────────────────
+
+def test_intake_populates_financials_from_profile(client):
+    # 1. Create product and financial profile
+    pid = client.post(f"{API}/products", json=MILK_PRODUCT).json()["data"]["id"]
+    client.post(f"{API}/financial-profiles", json={
+        "product_id": pid,
+        "purchase_price": "40.00",
+        "mrp": "50.00",
+        "default_profit_margin_percent": "20.00"
+    })
+
+    # 2. Intake scan
+    r = client.post(_i("/intake"), json={
+        "barcode": "8901234567890",
+        "batch_number": "BATCH-FIN",
+        "quantity": 5
+    })
+    assert r.status_code == 201
+    data = r.json()["data"]
+
+    # 3. Verify copied fields and synchronized cost
+    assert data["purchase_price"] == "40.00"
+    assert data["mrp"] == "50.00"
+    assert data["currency"] == "INR"
+    assert data["quantity"] == 5
+    assert data["inventory_cost"] == "200.00" # 5 * 40.00
+    assert data["supplier_return_allowed"] is True
+    assert data["supplier_return_percent"] == "100.00" # default
+    assert data["financial_profile_snapshot"] is not None
+    assert data["financial_profile_snapshot"]["purchase_price"] == "40.00"
+    assert data["financial_profile_snapshot"]["mrp"] == "50.00"
+
+
+def test_intake_ocr_mrp_override(client):
+    # Create product and profile
+    pid = client.post(f"{API}/products", json=MILK_PRODUCT).json()["data"]["id"]
+    client.post(f"{API}/financial-profiles", json={
+        "product_id": pid,
+        "purchase_price": "40.00",
+        "mrp": "50.00",
+        "default_profit_margin_percent": "20.00"
+    })
+
+    # Intake with overriding OCR MRP
+    r = client.post(_i("/intake"), json={
+        "barcode": "8901234567890",
+        "batch_number": "BATCH-OCR",
+        "mrp": "55.00",
+        "quantity": 2
+    })
+    assert r.status_code == 201
+    data = r.json()["data"]
+    assert data["mrp"] == "55.00" # OCR override
+    assert data["purchase_price"] == "40.00"
+    assert data["inventory_cost"] == "80.00"
+    assert data["financial_profile_snapshot"]["mrp"] == "55.00" # snapshot has overridden MRP
+
+
+def test_intake_validation_rules(client):
+    # Create product and profile
+    pid = client.post(f"{API}/products", json=MILK_PRODUCT).json()["data"]["id"]
+    client.post(f"{API}/financial-profiles", json={
+        "product_id": pid,
+        "purchase_price": "40.00",
+        "mrp": "50.00",
+        "default_profit_margin_percent": "20.00"
+    })
+
+    # Invalid MRP < purchase_price
+    r1 = client.post(_i("/intake"), json={
+        "barcode": "8901234567890",
+        "batch_number": "BATCH-ERR",
+        "mrp": "35.00" # < 40.00 purchase_price
+    })
+    assert r1.status_code == 400
+    assert r1.json()["detail"]["error_code"] == "INVALID_PRICING"
+
+    # Invalid quantity <= 0
+    r2 = client.post(_i("/intake"), json={
+        "barcode": "8901234567890",
+        "batch_number": "BATCH-ERR2",
+        "quantity": 0
+    })
+    assert r2.status_code == 422
+

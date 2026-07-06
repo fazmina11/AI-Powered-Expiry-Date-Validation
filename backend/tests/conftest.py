@@ -22,6 +22,10 @@ import app.models.product           # noqa: F401
 import app.models.inventory         # noqa: F401
 import app.models.validation_record # noqa: F401
 import app.models.user              # noqa: F401
+import app.models.financial_profile # noqa: F401
+import app.models.warehouse         # noqa: F401
+
+
 
 
 @pytest.fixture(scope="function")

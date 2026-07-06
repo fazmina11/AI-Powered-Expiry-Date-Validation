@@ -28,6 +28,16 @@ class Settings(BaseSettings):
     # Runtime environment
     APP_ENV: str = "development"  # development | staging | production
 
+    # Hugging Face Inference API Config
+    HF_MODEL: str = "meta-llama/Llama-3.2-3B-Instruct"
+    HF_API_TOKEN: str = ""
+    HF_API_URL: str = "https://api-inference.huggingface.co/models"
+    LLM_TIMEOUT: int = 15
+    MAX_TOKENS: int = 500
+    TEMPERATURE: float = 0.7
+    TOP_P: float = 0.9
+
+
     model_config = ConfigDict(env_file=".env", extra="ignore")
 
 

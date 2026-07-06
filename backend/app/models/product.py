@@ -26,3 +26,5 @@ class Product(Base):
 
     # Relationships
     inventory_items = relationship("InventoryItem", back_populates="product")
+    financial_profile = relationship("ProductFinancialProfile", back_populates="product", uselist=False, cascade="all, delete-orphan")
+

@@ -1,0 +1,10 @@
+Provided Context JSON:
+{context_json}
+
+Conversation History:
+{conversation_history}
+
+User Question:
+{question}
+
+Answer the user's question directly using only the Provided Context JSON. If the context does not contain enough information to answer the question, state that the information is unavailable.

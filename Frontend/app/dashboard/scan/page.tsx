@@ -79,7 +79,7 @@ export default function ScanPage() {
     if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("blob:") || url.startsWith("data:")) {
       return url;
     }
-    return `http://localhost:8001${url}`;
+    return `http://localhost:8000${url}`;
   }, []);
 
   const getPipelineLogs = useCallback((item: OCRHistoryItem) => {

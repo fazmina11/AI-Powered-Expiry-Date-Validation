@@ -1,3 +1,12 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# requirements.txt — Auth-Free Development Mode
+#
+# passlib and python-jose are COMMENTED OUT (not deleted).
+# They will be re-enabled when Firebase Admin SDK is integrated.
+#
+# To restore: uncomment the two lines below and run: pip install -r requirements.txt
+# ─────────────────────────────────────────────────────────────────────────────
+
 fastapi==0.111.0
 uvicorn==0.29.0
 sqlalchemy==2.0.30
@@ -5,8 +14,14 @@ pydantic==2.7.1
 pydantic-settings==2.2.1
 python-dotenv==1.0.1
 python-multipart==0.0.9
-passlib[bcrypt]==1.7.4
-python-jose[cryptography]==3.3.0
-psycopg2-binary==2.9.9
+
+# ── Auth dependencies — disabled, preserved for Firebase re-integration ──────
+# passlib[bcrypt]==1.7.4
+# python-jose[cryptography]==3.3.0
+# ── When re-enabling Firebase: also add ──────────────────────────────────────
+# firebase-admin==6.5.0
+
+psycopg[binary]>=3.2.0
 pytest==8.2.0
 httpx==0.27.0
+

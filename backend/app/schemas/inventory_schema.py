@@ -7,9 +7,10 @@ InventoryListResponse   — list response wrapper
 """
 
 from datetime import date, datetime
-from typing import Optional, List
+from decimal import Decimal
+from typing import Optional, List, Any
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, Field
 
 
 class InventoryIntakeRequest(BaseModel):
@@ -18,11 +19,15 @@ class InventoryIntakeRequest(BaseModel):
 
     barcode is required — used to resolve the Product.
     All date fields are optional; missing expiry_date triggers MANUAL_REVIEW.
+    mrp, quantity, and purchase_price are optional for financial autonomy (Phase 2).
     """
     barcode:            str
     batch_number:       str
     manufacturing_date: Optional[date] = None
     expiry_date:        Optional[date] = None
+    mrp:                Optional[Decimal] = Field(default=None, gt=0)
+    quantity:           Optional[int] = Field(default=1, gt=0)
+    purchase_price:     Optional[Decimal] = Field(default=None, gt=0)
 
     @field_validator("barcode")
     @classmethod
@@ -34,15 +39,25 @@ class InventoryIntakeRequest(BaseModel):
 
 class InventoryResponse(BaseModel):
     """Shape of a single InventoryItem returned to the client."""
-    id:                 int
-    product_id:         int
-    batch_number:       Optional[str]
-    manufacturing_date: Optional[date]
-    expiry_date:        Optional[date]
-    remaining_days:     Optional[int]
-    status:             str
-    decision_reason:    Optional[str]
-    created_at:         datetime
+    id:                         int
+    product_id:                 int
+    batch_number:               Optional[str]
+    manufacturing_date:         Optional[date]
+    expiry_date:                Optional[date]
+    remaining_days:             Optional[int]
+    status:                     str
+    decision_reason:            Optional[str]
+    created_at:                 datetime
+
+    # Financial fields (Phase 2)
+    quantity:                   int
+    purchase_price:             Optional[Decimal]
+    mrp:                        Optional[Decimal]
+    inventory_cost:             Optional[Decimal]
+    currency:                   str
+    supplier_return_allowed:    Optional[bool]
+    supplier_return_percent:    Optional[Decimal]
+    financial_profile_snapshot: Optional[Any]
 
     model_config = ConfigDict(from_attributes=True)
 

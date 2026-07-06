@@ -1,0 +1,7 @@
+Provided Context JSON (Summary Scope):
+{context_json}
+
+Applied Filters:
+{filters}
+
+Using only the Provided Context JSON, generate a concise, professional executive warehouse financial summary. Outline high-risk batches, estimated preventable financial losses, total expected savings, and count of redistribution, return, or disposal actions matching the context scope. Do not hallucinate values.

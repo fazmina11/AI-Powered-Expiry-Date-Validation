@@ -18,14 +18,20 @@ from app.schemas.inventory_schema import (
     InventoryListResponse,
     InventoryResponse,
 )
+from app.schemas.financial_analysis_schema import FinancialAnalysisResponse
+from app.schemas.optimization_schema import OptimizationResponse
 from app.services.inventory_service import (
     create_inventory_item,
     get_all_inventory,
     get_inventory_by_id,
     get_inventory_by_status,
 )
+from app.services.financial_decision_service import perform_financial_analysis
+from app.services.cost_benefit_optimizer.optimizer_service import optimize_inventory_item
+
+
 from app.utils.constants import DECISION_STATUSES
-from app.utils.exceptions import InventoryItemNotFoundError, ProductNotFoundError
+from app.utils.exceptions import InventoryItemNotFoundError, ProductNotFoundError, InvalidPricingError
 from app.utils.response import error_response, success_response
 
 router = APIRouter()
@@ -54,6 +60,12 @@ def intake_endpoint(payload: InventoryIntakeRequest, db: Session = Depends(get_d
                 "No product found for this barcode", "PRODUCT_NOT_FOUND"
             ),
         )
+    except InvalidPricingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_response(str(exc), exc.error_code),
+        )
+
 
 
 # ── GET /inventory ────────────────────────────────────────────
@@ -121,3 +133,41 @@ def get_inventory_item_endpoint(item_id: int, db: Session = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=error_response("Inventory item not found", "INVENTORY_ITEM_NOT_FOUND"),
         )
+
+
+# ── GET /inventory/{inventory_item_id}/financial-analysis ─────
+
+@router.get("/{item_id}/financial-analysis")
+def get_financial_analysis_endpoint(item_id: int, db: Session = Depends(get_db)):
+    """Fetch the financial analysis risk assessment for a specific inventory item."""
+    try:
+        analysis = perform_financial_analysis(db, item_id)
+        return success_response(
+            data=FinancialAnalysisResponse.model_validate(analysis),
+            message="Financial analysis generated successfully",
+        )
+    except InventoryItemNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=error_response(str(exc), exc.error_code),
+        )
+
+
+# ── GET /inventory/{inventory_item_id}/optimization ───────────
+
+@router.get("/{item_id}/optimization")
+def get_cost_benefit_optimization_endpoint(item_id: int, db: Session = Depends(get_db)):
+    """Compute and rank optimal actions for an inventory item."""
+    try:
+        opt = optimize_inventory_item(db, item_id)
+        return success_response(
+            data=OptimizationResponse.model_validate(opt),
+            message="Cost-benefit optimization generated successfully",
+        )
+    except InventoryItemNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=error_response(str(exc), exc.error_code),
+        )
+
+

@@ -3,43 +3,102 @@ services/inventory_service.py — Inventory Intake business logic.
 
 Business flow for create_inventory_item():
   1. Resolve Product from barcode  → 404 if not found
-  2. Call evaluate_shelf_life()    → get status + remaining_days + reason
-  3. Persist InventoryItem         → return saved record
-
-All other functions are thin query helpers used by routes.
+  2. Load financial profile snapshot (Phase 2)
+  3. Call evaluate_shelf_life()    → get status + remaining_days + reason
+  4. Persist InventoryItem         → return saved record
 """
 
+from datetime import datetime
+from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy.orm import Session
 
 from app.models.inventory import InventoryItem
 from app.models.product import Product
+from app.models.financial_profile import ProductFinancialProfile
 from app.schemas.inventory_schema import InventoryIntakeRequest
 from app.services.shelf_life_service import evaluate_shelf_life
 from app.utils.constants import ACCEPTED, PRIORITY_SALE, REJECTED, MANUAL_REVIEW, INVALID_DATE
-from app.utils.exceptions import InventoryItemNotFoundError, ProductNotFoundError
+from app.utils.exceptions import InventoryItemNotFoundError, ProductNotFoundError, InvalidPricingError
 
-
-# ── Phase 1.5 canonical function names ───────────────────────
 
 def create_inventory_item(db: Session, data: InventoryIntakeRequest) -> InventoryItem:
     """
     Run the full inventory intake workflow:
-      barcode → product lookup → shelf-life evaluation → persist → return.
+      barcode → product lookup → financial snapshots → shelf-life evaluation → persist.
 
     Raises:
         ProductNotFoundError — if no product matches the barcode.
+        InvalidPricingError — if pricing constraint validations fail.
     """
     # Step 1: resolve product
     product = db.query(Product).filter(Product.barcode == data.barcode).first()
     if not product:
         raise ProductNotFoundError(f"No product found for barcode '{data.barcode}'")
 
-    # Step 2: evaluate shelf life
+    # Step 2: resolve and copy financial metadata (Phase 2)
+    purchase_price = data.purchase_price
+    mrp = data.mrp
+    currency = "INR"
+    supplier_return_allowed = None
+    supplier_return_percent = None
+    snapshot = None
+
+    profile = db.query(ProductFinancialProfile).filter(ProductFinancialProfile.product_id == product.id).first()
+    if profile:
+        if purchase_price is None:
+            purchase_price = profile.purchase_price
+        if mrp is None:
+            mrp = profile.mrp
+        currency = profile.currency or "INR"
+        supplier_return_allowed = profile.supplier_return_allowed
+        supplier_return_percent = profile.supplier_return_percent
+
+        dec_purchase_price = Decimal(str(purchase_price))
+        dec_mrp = Decimal(str(mrp))
+
+        if dec_purchase_price <= 0:
+            raise InvalidPricingError("Purchase price must be greater than zero")
+        if dec_mrp < dec_purchase_price:
+            raise InvalidPricingError("MRP must be greater than or equal to purchase price")
+
+        snapshot = {
+            "purchase_price": f"{dec_purchase_price:.2f}",
+            "mrp": f"{dec_mrp:.2f}",
+            "profit_margin_percent": f"{profile.default_profit_margin_percent:.2f}",
+            "currency": currency,
+            "brand": product.sku.split("-")[0] if "-" in product.sku else "",
+            "product_name": product.name,
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "profile_version": 1
+        }
+    else:
+        # If no profile, but user passed pricing overrides in intake data, we validate and save them
+        if purchase_price is not None:
+            dec_purchase_price = Decimal(str(purchase_price))
+            dec_mrp = Decimal(str(mrp)) if mrp is not None else dec_purchase_price
+
+            if dec_purchase_price <= 0:
+                raise InvalidPricingError("Purchase price must be greater than zero")
+            if dec_mrp < dec_purchase_price:
+                raise InvalidPricingError("MRP must be greater than or equal to purchase price")
+
+            snapshot = {
+                "purchase_price": f"{dec_purchase_price:.2f}",
+                "mrp": f"{dec_mrp:.2f}",
+                "profit_margin_percent": "0.00",
+                "currency": currency,
+                "brand": product.sku.split("-")[0] if "-" in product.sku else "",
+                "product_name": product.name,
+                "generated_at": datetime.utcnow().isoformat() + "Z",
+                "profile_version": 0
+            }
+
+    # Step 3: evaluate shelf life
     decision = evaluate_shelf_life(data.manufacturing_date, data.expiry_date)
 
-    # Step 3: persist inventory record
+    # Step 4: persist inventory record
     item = InventoryItem(
         product_id=product.id,
         batch_number=data.batch_number,
@@ -48,12 +107,21 @@ def create_inventory_item(db: Session, data: InventoryIntakeRequest) -> Inventor
         remaining_days=decision["remaining_days"],
         status=decision["status"],
         decision_reason=decision["decision_reason"],
+        # Financial columns
+        quantity=data.quantity if data.quantity is not None else 1,
+        purchase_price=purchase_price,
+        mrp=mrp,
+        currency=currency,
+        supplier_return_allowed=supplier_return_allowed,
+        supplier_return_percent=supplier_return_percent,
+        financial_profile_snapshot=snapshot,
     )
+    
+    # Event-sync triggers calculate_inventory_cost automatically upon creation
     db.add(item)
     db.commit()
     db.refresh(item)
 
-    # Step 4: return
     return item
 
 

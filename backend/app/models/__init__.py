@@ -11,5 +11,32 @@ Usage in main.py:
 from app.models.product import Product
 from app.models.inventory import InventoryItem
 from app.models.validation_record import ValidationRecord
+from app.models.user import User                          # required for users table creation
+from app.models.financial_profile import ProductFinancialProfile
+from app.models.warehouse import (
+    Warehouse,
+    TransportCostConfiguration,
+    WarehouseConfiguration,
+    WarehouseDemandProfile,
+    WarehouseTransferMatrix,
+    SupplierReturnPolicy,
+    OptimizationConfiguration,
+)
 
-__all__ = ["Product", "InventoryItem", "ValidationRecord"]
+__all__ = [
+    "Product",
+    "InventoryItem",
+    "ValidationRecord",
+    "User",
+    "ProductFinancialProfile",
+    "Warehouse",
+    "TransportCostConfiguration",
+    "WarehouseConfiguration",
+    "WarehouseDemandProfile",
+    "WarehouseTransferMatrix",
+    "SupplierReturnPolicy",
+    "OptimizationConfiguration",
+]
+
+
+
