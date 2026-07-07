@@ -127,8 +127,11 @@ class EnhancedOCRPipeline:
         gemini_key = os.environ.get('GEMINI_API_KEY')
         openai_key = os.environ.get('OPENAI_API_KEY')
         
-        if not gemini_key and not openai_key:
-            logger.info("No Vision LLM API keys configured, skipping")
+        is_gemini_valid = bool(gemini_key and gemini_key.strip().startswith("AIzaSy") and len(gemini_key.strip()) >= 20)
+        is_openai_valid = bool(openai_key and openai_key.strip().startswith("sk-") and len(openai_key.strip()) >= 20)
+        
+        if not is_gemini_valid and not is_openai_valid:
+            logger.info("No valid Vision LLM API keys configured, skipping")
             return None
         
         try:

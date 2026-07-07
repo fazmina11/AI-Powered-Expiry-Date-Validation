@@ -15,7 +15,7 @@ def parse_date_safe(val) -> Optional[date]:
         return val.date()
     val_str = str(val).strip()
     # Try common formats
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%Y/%m/%d", "%d-%m-%Y", "%Y-%m"):
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%Y/%m/%d", "%d-%m-%Y", "%Y-%m", "%d/%m/%y", "%m/%d/%y", "%d-%m-%y"):
         try:
             return datetime.strptime(val_str, fmt).date()
         except ValueError:

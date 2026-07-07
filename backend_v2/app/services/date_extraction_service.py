@@ -65,11 +65,11 @@ _MONTHS: dict[str, int] = {
 # Ordered list of (pattern, format_name) to try when scanning for dates
 _DATE_SPECS = [
     (DATE_TEXTUAL_DMY_PATTERN, "textual_dmy"),  # 12 May 2026  — highest priority
-    (DATE_DMY_PATTERN,         "dmy"),           # 12/05/2026
-    (DATE_MDY_PATTERN,         "mdy"),           # 05/12/2026
-    (DATE_YMD_PATTERN,         "ymd"),           # 2026-05-12
-    (DATE_DMY_SHORT_PATTERN,   "dmy_short"),     # 12/05/26
-    (DATE_MDY_SHORT_PATTERN,   "mdy_short"),     # 05/12/26
+    (re.compile(r'(?<!\d)(0?[1-9]|[12][0-9]|3[01])([\/\-\.])(0?[1-9]|1[0-2])(?:[\/\-\.])(20\d{2})(?!\d)'), "dmy"),           # 12/05/2026
+    (re.compile(r'(?<!\d)(0?[1-9]|1[0-2])([\/\-\.])(0?[1-9]|[12][0-9]|3[01])(?:[\/\-\.])(20\d{2})(?!\d)'), "mdy"),           # 05/12/2026
+    (re.compile(r'(?<!\d)(20\d{2})([\/\-\.])(0?[1-9]|1[0-2])(?:[\/\-\.])(0?[1-9]|[12][0-9]|3[01])(?!\d)'), "ymd"),           # 2026-05-12
+    (re.compile(r'(?<!\d)(0?[1-9]|[12][0-9]|3[01])([\/\-\.])(0?[1-9]|1[0-2])(?:[\/\-\.])(\d{2})(?!\d)'), "dmy_short"),     # 12/05/26
+    (re.compile(r'(?<!\d)(0?[1-9]|1[0-2])([\/\-\.])(0?[1-9]|[12][0-9]|3[01])(?:[\/\-\.])(\d{2})(?!\d)'), "mdy_short"),     # 05/12/26
     (DATE_TEXTUAL_MY_PATTERN,  "textual_my"),    # May 2026
     (DATE_MY_PATTERN,          "my"),            # 05/2026
 ]
@@ -240,7 +240,12 @@ def extract_fields(raw_text: str) -> ExtractionResult:
     if not raw_text or not raw_text.strip():
         return result
 
-    # ── Pass 0: Clean up date-like substrings of digit confusion (e.g. 09/O6/26 -> 09/06/26)
+    # ── Pass 0: Clean up OCR artifacts in dates ────────────────────────────────
+    # Remove spaces around date separators (e.g., '13 / 05 / 20' -> '13/05/20')
+    raw_text = re.sub(r'(\d)\s*([/\-.])\s*(\d)', r'\1\2\3', raw_text)
+    raw_text = re.sub(r'(\d)\s*([/\-.])\s*(\d)', r'\1\2\3', raw_text) # Run twice for overlapping (e.g. 1 / 2 / 3)
+    
+    # Clean up digit confusion (e.g. 09/O6/26 -> 09/06/26)
     raw_text = clean_date_substrings(raw_text)
 
     # ── Pass 1: collect every date with its position and context label ────────

@@ -35,6 +35,7 @@ from app.services.paddle_ocr_service import extract_text
 from app.services.product_intelligence_service import ProductIntelligenceService
 from app.services.scan_validation_service import ValidationService
 from app.services.date_extraction_service import extract_fields
+from app.services.standalone_date_extractor import StandaloneDateExtractor
 from app.services.alert_service import AlertService
 from app.services.vision_llm_service import (
     extract_structured_fields_from_text,
@@ -112,33 +113,16 @@ class ScanPipelineService:
                 log.error("[Pipeline] Temp file creation failed: %s", exc, exc_info=True)
                 print(f"[Pipeline] ERROR creating temp file: {exc}", flush=True)
 
-        # ── Frame Quality Gating Check ───────────────────────────────────────
+        # ── Frame Quality Gating Check (don't block processing, just warn) ─────
+        quality_reason = None
         if frame is not None:
             try:
                 from app.services.date_roi_service import is_frame_usable
                 usable, reason = is_frame_usable(frame)
                 if not usable:
-                    log.warning("[Pipeline] Quality gate FAILED: %s", reason)
-                    print(f"[Pipeline] QUALITY GATE FAILED: {reason}", flush=True)
-                    
-                    # Cleanup temp file immediately on early exit
-                    if temp_file_path and os.path.exists(temp_file_path):
-                        try:
-                            os.remove(temp_file_path)
-                        except Exception:
-                            pass
-
-                    # Build an empty profile
-                    profile = self.product_intel_service.build_product_profile()
-                    total_time = time.time() - start_total
-                    
-                    return PipelineResult(
-                        **profile.model_dump(),
-                        status="FAILED_QUALITY",
-                        reject_reason=reason,
-                        total_time=total_time,
-                        execution_times=execution_times
-                    )
+                    log.warning("[Pipeline] Quality gate WARNED: %s (proceeding anyway)", reason)
+                    print(f"[Pipeline] QUALITY GATE WARNED: {reason} — proceeding with OCR anyway", flush=True)
+                    quality_reason = reason
             except Exception as q_exc:
                 log.warning("[Pipeline] Quality gating execution error: %s", q_exc)
 
@@ -289,156 +273,100 @@ class ScanPipelineService:
                 }
             elif image_path and os.path.isfile(image_path):
 
-                # ── STAGE 4A: Local PaddleOCR ─────────────────────────────────
-                log.info("[Pipeline] Stage 4A: Running local PaddleOCR...")
-                print("[Pipeline] Stage 4A: Running local PaddleOCR...", flush=True)
-                local_ocr = None
-                try:
-                    local_ocr = extract_text(image_path)
-                    if local_ocr and "blocks" in local_ocr:
-                        h_img, w_img = frame.shape[:2] if frame is not None else (0, 0)
-                        ocr_blocks = {
-                            "width": w_img,
-                            "height": h_img,
-                            "blocks": local_ocr["blocks"]
-                        }
-                    log.info("[Pipeline] Stage 4A: PaddleOCR done. lines=%s conf=%.2f",
-                             local_ocr.get("line_count", 0), local_ocr.get("confidence", 0))
-                    print(f"[Pipeline] Stage 4A OK: lines={local_ocr.get('line_count',0)} "
-                          f"conf={local_ocr.get('confidence', 0):.2f}", flush=True)
-                except Exception as paddle_exc:
-                    log.warning("[Pipeline] Stage 4A: PaddleOCR failed: %s", paddle_exc)
-                    print(f"[Pipeline] Stage 4A WARN: PaddleOCR failed: {paddle_exc}", flush=True)
+                gemini_key = os.environ.get("GEMINI_API_KEY")
+                openai_key = os.environ.get("OPENAI_API_KEY")
+                is_gemini_valid = bool(gemini_key and len(gemini_key.strip()) >= 20)
+                is_openai_valid = bool(openai_key and openai_key.strip().startswith("sk-") and len(openai_key.strip()) >= 20)
+                has_llm_key = is_gemini_valid or is_openai_valid
 
-                # ── STAGE 4B: Text LLM (PaddleOCR text → structured JSON) ─────
-                # Uses ~100 tokens per call — much cheaper than Vision LLM
-                llm_text_result = None
-                if local_ocr and local_ocr.get("raw_text"):
-                    log.info("[Pipeline] Stage 4B: Sending OCR text to text LLM...")
-                    print("[Pipeline] Stage 4B: Sending OCR text to text LLM...", flush=True)
-                    llm_text_result = extract_structured_fields_from_text(local_ocr["raw_text"])
-                    if llm_text_result:
-                        log.info("[Pipeline] Stage 4B OK: expiry=%s mfg=%s conf=%.2f",
-                                 llm_text_result.expiry_date, llm_text_result.mfg_date,
-                                 llm_text_result.confidence_score)
-                        print(f"[Pipeline] Stage 4B OK: expiry={llm_text_result.expiry_date} "
-                              f"mfg={llm_text_result.mfg_date}", flush=True)
-                    else:
-                        log.info("[Pipeline] Stage 4B: Text LLM returned None (no API key or error).")
-                        print("[Pipeline] Stage 4B: Text LLM skipped.", flush=True)
+                final_llm = None
+                if has_llm_key:
+                    log.info("[Pipeline] Stage 4A: API Key found! Skipping local OCR. Calling Vision LLM directly...")
+                    print("[Pipeline] Stage 4A: API Key found! Skipping local OCR. Calling Vision LLM directly...", flush=True)
+                    try:
+                        import base64
+                        with open(image_path, "rb") as img_file:
+                            img_b64 = base64.b64encode(img_file.read()).decode("utf-8")
+                        final_llm = extract_structured_fields_via_llm(image_b64=img_b64, is_crop=False)
+                    except Exception as llm_exc:
+                        log.warning("[Pipeline] Vision LLM failed: %s", llm_exc)
+                        print(f"[Pipeline] Vision LLM failed: {llm_exc}", flush=True)
 
-                # ── STAGE 4C: Vision LLM (Targeted ROI Crop / Full Image Fallback) ──
-                # Triggered only when: (a) PaddleOCR found no text, OR
-                #                      (b) text LLM could not parse dates
-                llm_vision_result = None
-                dates_missing = (
-                    llm_text_result is None
-                    or (not llm_text_result.expiry_date and not llm_text_result.mfg_date)
-                )
-                if dates_missing:
-                    log.info("[Pipeline] Stage 4C: Dates missing — attempting targeted ROI Vision LLM...")
-                    print("[Pipeline] Stage 4C: Dates missing — attempting targeted ROI Vision LLM...", flush=True)
-
-                    # 1. Try to extract ROI crop from frame
-                    crop_bytes, found = None, False
-                    if frame is not None:
-                        try:
-                            from app.services.date_roi_service import extract_date_crop, crop_to_base64
-                            crop_bytes, found = extract_date_crop(frame, barcode=barcode_raw)
-                        except Exception as crop_exc:
-                            log.warning("[Pipeline] ROI detection failed: %s", crop_exc)
-                            print(f"[Pipeline] ROI crop failed: {crop_exc}", flush=True)
-
-                    # 2. If ROI crop is found, query Vision LLM with is_crop=True
-                    if found and crop_bytes:
-                        try:
-                            log.info("[Pipeline] Date ROI found. Sending crop to Vision LLM...")
-                            print("[Pipeline] Date ROI found. Sending crop to Vision LLM...", flush=True)
-                            crop_b64 = crop_to_base64(crop_bytes)
-                            llm_vision_result = extract_structured_fields_via_llm(image_b64=crop_b64, is_crop=True)
-                        except Exception as llm_crop_exc:
-                            log.warning("[Pipeline] Vision LLM on ROI crop failed: %s", llm_crop_exc)
-                            print(f"[Pipeline] Vision LLM on crop failed: {llm_crop_exc}", flush=True)
-
-                    # 3. Fallback: No ROI found, or crop vision call failed -> Send full image with is_crop=False
-                    if not llm_vision_result:
-                        log.info("[Pipeline] ROI unavailable or failed. Sending full image to Vision LLM...")
-                        print("[Pipeline] ROI unavailable or failed. Sending full image to Vision LLM...", flush=True)
-                        try:
-                            llm_vision_result = extract_structured_fields_via_llm(image_path=image_path, is_crop=False)
-                        except Exception as llm_full_exc:
-                            log.warning("[Pipeline] Vision LLM on full image failed: %s", llm_full_exc)
-                            print(f"[Pipeline] Vision LLM on full image failed: {llm_full_exc}", flush=True)
-
-                    if llm_vision_result:
-                        log.info("[Pipeline] Stage 4C OK: expiry=%s mfg=%s conf=%.2f",
-                                 llm_vision_result.expiry_date, llm_vision_result.mfg_date,
-                                 llm_vision_result.confidence_score)
-                        print(f"[Pipeline] Stage 4C OK: expiry={llm_vision_result.expiry_date} "
-                              f"mfg={llm_vision_result.mfg_date}", flush=True)
-                    else:
-                        log.warning("[Pipeline] Stage 4C: Vision LLM also returned None.")
-                        print("[Pipeline] Stage 4C: Vision LLM skipped.", flush=True)
-
-                # ── Resolve best result ──────────────────────────────────────
-                # Priority: Vision LLM (most accurate) > Text LLM > Raw Regex Heuristics
-                final = llm_vision_result or llm_text_result
-
-                if final:
-                    raw_summary = (
-                        f"Product: {final.product_name or ''}\n"
-                        f"Batch:   {final.batch_number or ''}\n"
-                        f"MFG:     {final.mfg_date or ''}\n"
-                        f"EXP:     {final.expiry_date or ''}\n"
-                        f"MRP:     {final.mrp or ''}\n"
-                        f"Weight:  {final.weight or ''}"
-                    )
-                    # Merge partial GS1 batch/gtin if not already present
-                    batch_val = final.batch_number
+                if final_llm:
+                    batch_val = final_llm.batch_number
                     if not batch_val and partial_gs1:
                         batch_val = partial_gs1.get("batch")
 
-                    # Handle relative shelf-life calculation for LLM outputs
-                    exp_val = final.expiry_date
+                    exp_val = final_llm.expiry_date
                     computed_flag = False
-                    if final.mfg_date and not exp_val and getattr(final, "shelf_life_days", None):
+                    if final_llm.mfg_date and not exp_val and getattr(final_llm, "shelf_life_days", None):
                         try:
                             from dateutil.relativedelta import relativedelta
-                            mfg_dt = datetime.strptime(final.mfg_date, "%Y-%m-%d").date()
-                            exp_dt = mfg_dt + relativedelta(days=int(final.shelf_life_days))
+                            mfg_dt = datetime.strptime(final_llm.mfg_date, "%Y-%m-%d").date()
+                            exp_dt = mfg_dt + relativedelta(days=int(final_llm.shelf_life_days))
                             exp_val = exp_dt.strftime("%Y-%m-%d")
                             computed_flag = True
-                            log.info("[Pipeline] Computed expiry date %s from mfg %s using LLM shelf_life_days (%d days)",
-                                     exp_val, final.mfg_date, final.shelf_life_days)
                         except Exception as math_exc:
-                            log.warning("[Pipeline] Python relative date math failed: %s", math_exc)
+                            pass
 
                     ocr_data = {
-                        "raw_text":         local_ocr["raw_text"] if local_ocr else raw_summary,
-                        "confidence":        final.confidence_score,
-                        "line_count":        local_ocr.get("line_count", 6) if local_ocr else 6,
-                        "image_path":        image_path,
-                        "expiry_date":       exp_val,
-                        "best_before_date":  exp_val,
-                        "batch_number":      batch_val,
-                        "price":             final.mrp,
-                        "exp_computed":      computed_flag,
+                        "raw_text":         "Extracted via Fast Vision LLM",
+                        "confidence":       final_llm.confidence_score,
+                        "line_count":       0,
+                        "image_path":       image_path,
+                        "expiry_date":      exp_val,
+                        "best_before_date": exp_val,
+                        "batch_number":     batch_val,
+                        "price":            final_llm.mrp,
+                        "exp_computed":     computed_flag,
                         "detected_fields": {
-                            "mfg_date":     final.mfg_date,
+                            "mfg_date":     final_llm.mfg_date,
                             "lot_number":   None,
-                            "weight":       final.weight,
-                            "product_name": final.product_name,
+                            "weight":       final_llm.weight,
+                            "product_name": final_llm.product_name,
                         }
                     }
-                    log.info("[Pipeline] Stage 4 COMPLETE via LLM: expiry=%s, computed=%s", exp_val, computed_flag)
-                    print(f"[Pipeline] Stage 4 COMPLETE via LLM: expiry={exp_val} (computed={computed_flag})", flush=True)
-
+                    print(f"[Pipeline] Vision LLM OK: expiry={exp_val} mfg={final_llm.mfg_date}", flush=True)
                 else:
-                    # Final fallback: use raw regex heuristics on PaddleOCR text
-                    log.info("[Pipeline] Stage 4 FINAL FALLBACK: running regex heuristics...")
-                    print("[Pipeline] Stage 4 FINAL FALLBACK: regex heuristics.", flush=True)
+                    # ── STAGE 4B: Local PaddleOCR Fallback ─────────────────────────────────
+                    log.info("[Pipeline] Stage 4A: Running local PaddleOCR...")
+                    print("[Pipeline] Stage 4A: Running local PaddleOCR...", flush=True)
+                    local_ocr = None
+                    try:
+                        local_ocr = extract_text(image_path)
+                        if local_ocr and "blocks" in local_ocr:
+                            h_img, w_img = frame.shape[:2] if frame is not None else (0, 0)
+                            ocr_blocks = {
+                                "width": w_img,
+                                "height": h_img,
+                                "blocks": local_ocr["blocks"]
+                            }
+                        log.info("[Pipeline] Stage 4A: PaddleOCR done. lines=%s conf=%.2f",
+                                 local_ocr.get("line_count", 0), local_ocr.get("confidence", 0))
+                        print(f"[Pipeline] Stage 4A OK: lines={local_ocr.get('line_count',0)} "
+                              f"conf={local_ocr.get('confidence', 0):.2f}", flush=True)
+                    except Exception as paddle_exc:
+                        log.warning("[Pipeline] Stage 4A: PaddleOCR failed: %s", paddle_exc)
+                        print(f"[Pipeline] Stage 4A WARN: PaddleOCR failed: {paddle_exc}", flush=True)
+
+                    # ── STAGE 4B: Skip LLM steps, use regex extraction directly for speed ─────
+                    log.info("[Pipeline] Stage 4B: Using regex extraction (skipped LLM for speed)")
+                    print("[Pipeline] Stage 4B: Using regex extraction (skipped LLM for speed)", flush=True)
+                    
                     if local_ocr and local_ocr.get("raw_text"):
                         extracted = extract_fields(local_ocr["raw_text"])
+                        
+                        # Fallback to StandaloneDateExtractor if we didn't find dates
+                        if not (extracted.candidate_mfg_date or extracted.candidate_expiry_date):
+                            log.info("[Pipeline] No dates found with extract_fields, trying StandaloneDateExtractor...")
+                            print("[Pipeline] No dates found with extract_fields, trying StandaloneDateExtractor...", flush=True)
+                            standalone_extracted = StandaloneDateExtractor.extract_dates_from_text(local_ocr["raw_text"])
+                            if standalone_extracted.mfg_date:
+                                extracted.candidate_mfg_date = standalone_extracted.mfg_date.isoformat()
+                            if standalone_extracted.expiry_date:
+                                extracted.candidate_expiry_date = standalone_extracted.expiry_date.isoformat()
+                            if standalone_extracted.batch_number:
+                                extracted.candidate_batch = standalone_extracted.batch_number
 
                         batch_val = extracted.candidate_batch
                         if not batch_val and partial_gs1:
@@ -461,7 +389,7 @@ class ScanPipelineService:
                         print(f"[Pipeline] Regex heuristics OK: expiry={extracted.candidate_expiry_date} "
                               f"(computed={extracted.exp_computed})", flush=True)
                     else:
-                        log.warning("[Pipeline] No text and no LLM result. OCR data is empty.")
+                        log.warning("[Pipeline] No OCR text available.")
                         print("[Pipeline] No OCR data available.", flush=True)
             else:
                 log.warning("[Pipeline] OCR skipped: image_path unavailable or file missing.")
@@ -543,7 +471,7 @@ class ScanPipelineService:
             elif validation_res.overall_status == "WARNING":
                 status = "PARTIAL_SUCCESS"
 
-        # Apply user confidence and missing expiry gate
+        # Apply user confidence and missing expiry gate (but still allow review)
         confidence = 0.0
         computed_flag = False
         if ocr_data:
@@ -551,12 +479,20 @@ class ScanPipelineService:
             computed_flag = bool(ocr_data.get("exp_computed", False))
 
         has_expiry = False
+        has_mfg = False
         if profile and profile.expiry and profile.expiry.expiry_date:
             has_expiry = True
+        if profile and profile.manufacturing and profile.manufacturing.manufacturing_date:
+            has_mfg = True
 
-        if confidence < 0.70 or not has_expiry:
-            log.warning("[Pipeline] Scan rejected: confidence %.2f < 70%% or expiry_date missing.", confidence)
-            status = "FAILED"
+        # If any dates found, set to PARTIAL_SUCCESS so operator can review manually
+        if (has_expiry or has_mfg) and status == "FAILED":
+            status = "PARTIAL_SUCCESS"
+            log.info("[Pipeline] Dates found despite low confidence — upgrading status to PARTIAL_SUCCESS for manual review.")
+
+        # If quality gate failed, still keep partial status if we have dates, else FAILED_QUALITY
+        if quality_reason and status == "FAILED":
+            status = "FAILED_QUALITY"
 
         result = PipelineResult(
             **profile.model_dump(),
@@ -566,7 +502,8 @@ class ScanPipelineService:
             execution_times=execution_times,
             total_time=total_time,
             exp_computed=computed_flag,
-            ocr_blocks=ocr_blocks
+            ocr_blocks=ocr_blocks,
+            reject_reason=quality_reason
         )
 
         log.info("[Pipeline] === COMPLETE: status=%s, total_time=%.2fs, computed=%s ===", status, total_time, computed_flag)

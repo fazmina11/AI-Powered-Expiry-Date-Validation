@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from uuid import UUID
 from datetime import date
 from typing import Optional, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 import os, uuid, shutil
 
 from app.database import get_db
@@ -38,6 +38,15 @@ class FinalizeRequest(BaseModel):
     mrp: Optional[float] = None
     raw_text: Optional[str] = None
     confidence: Optional[float] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_empty_strings(cls, values: Any) -> Any:
+        if isinstance(values, dict):
+            for k, v in values.items():
+                if v == "":
+                    values[k] = None
+        return values
 
 @router.post("/validate-frame")
 async def validate_frame(file: UploadFile = File(...)):
@@ -110,8 +119,19 @@ def run_ocr(payload: RunOCRRequest, db: Session = Depends(get_db)):
 
 @router.post("/finalize")
 def finalize_scan(payload: FinalizeRequest, db: Session = Depends(get_db)):
-    res = ScanService.finalize_session(db, payload.session_id, payload.model_dump())
-    return success_response(res, "Scan finalized and inventory created")
+    import logging
+    logger = logging.getLogger("scan_route")
+    logger.info("Incoming Finalize Payload: %s", payload.model_dump())
+    try:
+        res = ScanService.finalize_session(db, payload.session_id, payload.model_dump())
+        logger.info("Finalize success: %s", res)
+        return success_response(res, "Scan finalized and inventory created")
+    except HTTPException as he:
+        logger.error("Finalize HTTPException: status=%s, detail=%s", he.status_code, he.detail)
+        raise he
+    except Exception as e:
+        logger.error("Finalize Exception: %s", str(e), exc_info=True)
+        raise e
 
 @router.post("/cancel/{session_id}")
 def cancel_scan(session_id: UUID, db: Session = Depends(get_db)):
@@ -157,42 +177,74 @@ def process_queued_scan(ocr_result_id: UUID, image_path: str, barcode: Optional[
         pipeline = ScanPipelineService()
         result = pipeline.process_scan(image_path)
         
-        # Update OCRResult fields from pipeline results
+        # ── Update OCRResult fields from pipeline results ──────────────────
+        print(f"[Worker DEBUG] result.manufacturing: {result.manufacturing}")
+        print(f"[Worker DEBUG] result.manufacturing.manufacturing_date: {result.manufacturing.manufacturing_date if result.manufacturing else None}")
+        print(f"[Worker DEBUG] result.expiry: {result.expiry}")
+        print(f"[Worker DEBUG] result.expiry.expiry_date: {result.expiry.expiry_date if result.expiry else None}")
+        
         if result.ocr:
             ocr_result.raw_text = result.ocr.raw_text
             ocr_result.overall_confidence = result.ocr.confidence
-            
+            print(f"[Worker DEBUG] result.ocr.raw_text: {repr(result.ocr.raw_text)}")
+
+        # Always persist extracted dates regardless of pipeline status —
+        # the confidence / expiry gate only controls auto-inventory creation,
+        # NOT whether we save what OCR found so the operator can review it.
         if result.manufacturing and result.manufacturing.manufacturing_date:
             ocr_result.candidate_mfg_date = result.manufacturing.manufacturing_date
         if result.expiry and result.expiry.expiry_date:
             ocr_result.candidate_expiry_date = result.expiry.expiry_date
-        if result.batch:
+        if result.batch and result.batch.batch_number:
             ocr_result.batch_number_detected = result.batch.batch_number
-        if result.pricing:
+        if result.pricing and result.pricing.price is not None:
             ocr_result.mrp_detected = result.pricing.price
-            
+
         if result.product:
             ocr_result.extracted_product_name = result.product.name
             ocr_result.extracted_brand = result.product.brand
             ocr_result.extracted_description = result.product.ingredients
-            
+
         # Store bounding boxes in extracted_text_blocks
         if result.ocr_blocks:
             ocr_result.extracted_text_blocks = result.ocr_blocks
-            
-        # Try to resolve barcode and product
+
+        # ── Try to resolve barcode and product ────────────────────────────
         barcode_val = barcode or (result.barcode.value if result.barcode else None)
         product = None
         if barcode_val:
             product = db.query(Product).filter(Product.barcode == barcode_val).first()
             if product:
                 ocr_result.product_id = product.id
-                
-        # Handle auto-saving to inventory if validation succeeded
+
+        # ── Commit the OCR field updates FIRST so dates are never lost ────
+        # This ensures candidate_mfg_date / candidate_expiry_date survive
+        # even if the auto-inventory block below fails for any reason.
+        has_dates = (
+            (result.manufacturing and result.manufacturing.manufacturing_date)
+            or (result.expiry and result.expiry.expiry_date)
+        )
+        print(f"[Worker DEBUG] has_dates: {has_dates}")
+        if has_dates:
+            ocr_result.ocr_status = "completed"
+            ocr_result.failure_reason = result.reject_reason or "Quality issues but dates extracted"
+        else:
+            ocr_result.ocr_status = "completed"  # Always mark as completed for manual review
+            ocr_result.failure_reason = result.reject_reason or "No dates automatically extracted - please review manually"
+        ocr_result.processed_at = datetime.utcnow()
+        db.commit()
+        logger.info(f"[Worker] OCR fields committed for {ocr_result_id}. "
+                    f"mfg={ocr_result.candidate_mfg_date} exp={ocr_result.candidate_expiry_date} "
+                    f"pipeline_status={result.status}")
+
+        # ── Auto-save to inventory when pipeline is fully confident ───────
+        # Runs in its own try/except so a failure here does NOT roll back
+        # the OCR field updates committed above.
         if result.status == "SUCCESS" and product:
             try:
-                # 1. BarcodeScan
                 from app.models.barcode_scan import BarcodeScan
+                from app.models.audit_log import AuditLog
+
                 b_scan = BarcodeScan(
                     raw_barcode=barcode_val,
                     scan_session_id=ocr_result.scan_session_id,
@@ -201,8 +253,7 @@ def process_queued_scan(ocr_result_id: UUID, image_path: str, barcode: Optional[
                 )
                 db.add(b_scan)
                 db.flush()
-                
-                # 2. InventoryItem
+
                 inv_item = InventoryItem(
                     product_id=product.id,
                     barcode_scan_id=b_scan.id,
@@ -216,44 +267,40 @@ def process_queued_scan(ocr_result_id: UUID, image_path: str, barcode: Optional[
                 )
                 db.add(inv_item)
                 db.flush()
-                
+
                 ocr_result.inventory_item_id = inv_item.id
-                
-                # 3. AuditLog
-                from app.models.audit_log import AuditLog
-                audit = AuditLog(
+
+                db.add(AuditLog(
                     event_type="inventory.intake",
                     entity_type="inventory_item",
                     entity_id=str(inv_item.id),
                     action="intake_finalize",
                     message="Inventory item automatically created via async queue."
-                )
-                db.add(audit)
-            except Exception as inner_e:
-                logger.error(f"[Worker] Failed auto-saving inventory item: {inner_e}")
-                
-        # Generate Alerts
-        if result.alerts and result.alerts.alerts:
-            for alert_msg in result.alerts.alerts:
-                # Extract fields safely from the validation Alert schema object
-                code = getattr(alert_msg, 'code', 'VALIDATION_ERROR')
-                sev = getattr(alert_msg, 'severity', 'HIGH')
-                msg = getattr(alert_msg, 'message', str(alert_msg))
-                
-                db.add(ScanAlert(
-                    scan_session_id=ocr_result.scan_session_id,
-                    alert_type=code,
-                    severity=sev,
-                    message=msg
                 ))
-                
-        ocr_result.ocr_status = "completed" if (result.ocr or result.status in ["SUCCESS", "PARTIAL_SUCCESS"]) else "failed"
-        if result.status == "FAILED_QUALITY":
-            ocr_result.failure_reason = result.reject_reason or "Quality check failed"
-            ocr_result.ocr_status = "failed"
-            
-        ocr_result.processed_at = datetime.utcnow()
-        db.commit()
+                db.commit()
+                logger.info(f"[Worker] Auto-inventory created for {ocr_result_id}.")
+            except Exception as inner_e:
+                db.rollback()
+                logger.error(f"[Worker] Auto-inventory failed (OCR data already saved): {inner_e}")
+
+        # ── Generate Alerts ───────────────────────────────────────────────
+        if result.alerts and result.alerts.alerts:
+            try:
+                for alert_msg in result.alerts.alerts:
+                    code = getattr(alert_msg, 'code', 'VALIDATION_ERROR')
+                    sev  = getattr(alert_msg, 'severity', 'HIGH')
+                    msg  = getattr(alert_msg, 'message', str(alert_msg))
+                    db.add(ScanAlert(
+                        scan_session_id=ocr_result.scan_session_id,
+                        alert_type=code,
+                        severity=sev,
+                        message=msg
+                    ))
+                db.commit()
+            except Exception as alert_exc:
+                db.rollback()
+                logger.warning(f"[Worker] Alert generation failed: {alert_exc}")
+
         logger.info(f"[Worker] Completed background scan {ocr_result_id}. status={ocr_result.ocr_status}")
     except Exception as exc:
         db.rollback()
@@ -274,10 +321,10 @@ def process_queued_scan(ocr_result_id: UUID, image_path: str, barcode: Optional[
 
 @router.post("/enqueue")
 def enqueue_scan(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     session_id: Optional[UUID] = Form(None),
     barcode: Optional[str] = Form(None),
-    background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db)
 ):
     from app.models.scan_session import ScanSession

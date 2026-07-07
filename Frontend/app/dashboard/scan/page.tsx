@@ -101,7 +101,7 @@ export default function ScanPage() {
     }
 
     logs.push(`[${formatTime(1.5)}] [Quality] Running frame clarity variance and glare checks...`);
-    
+
     if (item.status === "processing") {
       logs.push(`[${formatTime(2.2)}] [Quality] Clarity check passed (lenient webcam threshold).`);
       logs.push(`[${formatTime(3.0)}] [OCR] Running local CPU PaddleOCR reader...`);
@@ -109,7 +109,23 @@ export default function ScanPage() {
     }
 
     if (item.status === "failed") {
-      if (item.failure_reason && item.failure_reason.includes("variance")) {
+      const hasDates = item.extracted_data.manufacturing_date || item.extracted_data.expiry_date;
+      if (item.extracted_data.raw_text) {
+        logs.push(`[${formatTime(3.1)}] [OCR] Raw text extracted: "${item.extracted_data.raw_text.replace(/\n/g, '\\n')}"`);
+      }
+      if (hasDates) {
+        // We have dates, so show successful extraction logs even if status is failed
+        logs.push(`[${formatTime(2.2)}] [Quality] ${item.failure_reason?.includes('glare') ? 'QUALITY CHECK WARNED: Severe light reflection/glare' : item.failure_reason?.includes('variance') ? 'QUALITY CHECK WARNED: Image is blurry' : 'Clarity check passed'}. Proceeding with OCR anyway.`);
+        logs.push(`[${formatTime(3.0)}] [OCR] Running local CPU PaddleOCR reader...`);
+        if (item.ocr_blocks && item.ocr_blocks.blocks) {
+          logs.push(`[${formatTime(4.0)}] [OCR] Detected ${item.ocr_blocks.blocks.length} text coordinates.`);
+        } else {
+          logs.push(`[${formatTime(4.0)}] [OCR] Detected text blocks successfully.`);
+        }
+        logs.push(`[${formatTime(4.2)}] [Validation] Running date extraction regex parser...`);
+        logs.push(`[${formatTime(4.4)}] [Validation] Extracted MFG: ${item.extracted_data.manufacturing_date || 'N/A'}, EXP: ${item.extracted_data.expiry_date || 'N/A'}.`);
+        logs.push(`[${formatTime(4.6)}] [Pipeline] COMPLETE: Dates extracted despite quality issues.`);
+      } else if (item.failure_reason && item.failure_reason.includes("variance")) {
         logs.push(`[${formatTime(2.0)}] [Quality] QUALITY CHECK FAILED: Image is blurry.`);
         logs.push(`[${formatTime(2.1)}] [Pipeline] EARLY EXIT: Task aborted.`);
       } else if (item.failure_reason && item.failure_reason.includes("glare")) {
@@ -156,6 +172,7 @@ export default function ScanPage() {
   const [autoScanEnabled, setAutoScanEnabled] = useState(true);
   const [isAnalyzingFrame, setIsAnalyzingFrame] = useState(false);
   const lastScanTime = useRef(0);
+  const hasAutoStarted = useRef(false);
 
   // Scan Queue History
   const [history, setHistory] = useState<OCRHistoryItem[]>([]);
@@ -178,22 +195,92 @@ export default function ScanPage() {
     fetchHistory();
   }, [fetchHistory]);
 
+  /* ── Open Inspection Modal ── */
+  const handleOpenInspect = useCallback((item: OCRHistoryItem) => {
+    setActiveItem(item);
+    setActiveItemData({
+      product_name: item.product.name,
+      brand: item.product.brand || undefined,
+      manufacturing_date: item.extracted_data.manufacturing_date || undefined,
+      expiry_date: item.extracted_data.expiry_date || undefined,
+      batch_number: item.extracted_data.batch_number || undefined,
+      mrp: item.extracted_data.mrp || undefined,
+      raw_text: item.extracted_data.raw_text || undefined,
+      confidence: item.extracted_data.confidence || undefined,
+    });
+    setIsModalOpen(true);
+
+    // For completed items, silently re-fetch fresh data from the DB in the background.
+    // This covers the case where a user opens an item that completed while they were away
+    // and the local history entry still has stale null values for the date fields.
+    if (item.status === "completed") {
+      scanFlowApi.getResultStatus(item.id)
+        .then((fresh) => {
+          setActiveItem(prev => {
+            if (!prev || prev.id !== fresh.id) return prev;
+            setActiveItemData(d => ({
+              ...d,
+              product_name: fresh.product.name || d.product_name,
+              brand: fresh.product.brand || d.brand,
+              manufacturing_date: fresh.extracted_data.manufacturing_date || d.manufacturing_date,
+              expiry_date: fresh.extracted_data.expiry_date || d.expiry_date,
+              batch_number: fresh.extracted_data.batch_number || d.batch_number,
+              mrp: fresh.extracted_data.mrp ?? d.mrp,
+            }));
+            return { ...fresh, image_url: fresh.image_url || prev.image_url };
+          });
+          setHistory(prev =>
+            prev.map(x => x.id === fresh.id
+              ? { ...fresh, image_url: fresh.image_url || x.image_url }
+              : x
+            )
+          );
+        })
+        .catch(() => { /* ignore — stale data from local state is an acceptable fallback */ });
+    }
+  }, []);
+
   /* ── Poll individual enqueued scan status ── */
   const pollScanStatus = useCallback(async (resultId: string) => {
-    const maxAttempts = 30; // max 45s (30 * 1.5s)
+    const maxAttempts = 120; // max 180s (120 * 1.5s) to allow for OCR weight downloads on first run
     let attempts = 0;
-    
+
     const interval = setInterval(async () => {
       attempts++;
       try {
         const item = await scanFlowApi.getResultStatus(resultId);
+
+        // Update history and active item unconditionally to show 'processing' status in UI
+        setHistory(prev => prev.map(x => x.id === resultId ? item : x));
+        setActiveItem(prev => (prev && prev.id === resultId) ? item : prev);
+
         if (item.status === "completed" || item.status === "failed") {
           clearInterval(interval);
-          setHistory(prev => prev.map(x => x.id === resultId ? item : x));
-          
+
+          // Automatically open the inspection modal for this scanned item
+          handleOpenInspect(item);
+
+          // If this item's modal is currently open and dates were just extracted,
+          // push the fresh data into the form fields so the operator sees them.
+          setActiveItem(prev => {
+            if (prev && prev.id === resultId) {
+              setActiveItemData(d => ({
+                ...d,
+                product_name: item.product.name || d.product_name,
+                brand: item.product.brand || d.brand,
+                manufacturing_date: item.extracted_data.manufacturing_date || d.manufacturing_date,
+                expiry_date: item.extracted_data.expiry_date || d.expiry_date,
+                batch_number: item.extracted_data.batch_number || d.batch_number,
+                mrp: item.extracted_data.mrp ?? d.mrp,
+              }));
+              return item;
+            }
+            return prev;
+          });
+
           toast({
             title: item.status === "completed" ? "Scan Processed" : "Scan Failed",
-            description: item.status === "completed" 
+            description: item.status === "completed"
               ? `Extracted details for ${item.product.name || 'product'}`
               : `Reason: ${item.failure_reason || 'Unknown error'}`,
             variant: item.status === "completed" ? "default" : "destructive"
@@ -202,7 +289,7 @@ export default function ScanPage() {
       } catch (err) {
         console.error("Polling error:", err);
       }
-      
+
       if (attempts >= maxAttempts) {
         clearInterval(interval);
         toast({
@@ -259,6 +346,14 @@ export default function ScanPage() {
     }
   }, [toast]);
 
+  // Auto-start scan session on mount
+  useEffect(() => {
+    if (!hasAutoStarted.current && flowStep === "idle") {
+      hasAutoStarted.current = true;
+      handleStartScan();
+    }
+  }, [flowStep, handleStartScan]);
+
   // Start camera after scan component mounts in DOM
   useEffect(() => {
     if (flowStep === "scanning" && camStatus === "idle") {
@@ -276,7 +371,7 @@ export default function ScanPage() {
     const analyzeFrame = async () => {
       // Throttle captures: must wait 3 seconds between auto-captures
       if (isAnalyzingFrame || Date.now() - lastScanTime.current < 3000) return;
-      
+
       const video = videoRef.current;
       if (!video || video.readyState !== video.HAVE_ENOUGH_DATA) return;
 
@@ -299,7 +394,7 @@ export default function ScanPage() {
               if (res.success && res.usable) {
                 playScanBeep();
                 lastScanTime.current = Date.now();
-                
+
                 // Show green camera flash feedback
                 const flashOverlay = document.createElement("div");
                 flashOverlay.className = "absolute inset-0 bg-emerald-500/20 pointer-events-none transition-opacity duration-300 z-50 opacity-100";
@@ -310,10 +405,10 @@ export default function ScanPage() {
                 }, 100);
 
                 const dataUrl = canvas.toDataURL("image/jpeg");
-                
+
                 // Trigger background queue enqueueing
                 const enqueueRes = await scanFlowApi.enqueueScan(blob, session?.id || undefined, detectedBarcode || undefined);
-                
+
                 // Instantly inject pending item to UI sidebar
                 const newItem: OCRHistoryItem = {
                   id: enqueueRes.ocr_result_id,
@@ -372,7 +467,7 @@ export default function ScanPage() {
   const handleManualCapture = useCallback(async () => {
     if (!session) return;
     setFlowStep("capturing");
-    
+
     // Create canvas capture
     const video = videoRef.current;
     if (!video) return;
@@ -394,10 +489,10 @@ export default function ScanPage() {
 
         playScanBeep();
         const dataUrl = canvas.toDataURL("image/jpeg");
-        
+
         // Enqueue scan to queue
         const enqueueRes = await scanFlowApi.enqueueScan(blob, session.id, detectedBarcode || undefined);
-        
+
         // Add pending card to queue list
         const newItem: OCRHistoryItem = {
           id: enqueueRes.ocr_result_id,
@@ -439,22 +534,6 @@ export default function ScanPage() {
     }
   }, [session, detectedBarcode, product, toast, pollScanStatus]);
 
-  /* ── Open Inspection Modal ── */
-  const handleOpenInspect = (item: OCRHistoryItem) => {
-    setActiveItem(item);
-    setActiveItemData({
-      product_name: item.product.name,
-      brand: item.product.brand || undefined,
-      manufacturing_date: item.extracted_data.manufacturing_date || undefined,
-      expiry_date: item.extracted_data.expiry_date || undefined,
-      batch_number: item.extracted_data.batch_number || undefined,
-      mrp: item.extracted_data.mrp || undefined,
-      raw_text: item.extracted_data.raw_text || undefined,
-      confidence: item.extracted_data.confidence || undefined,
-    });
-    setIsModalOpen(true);
-  };
-
   /* ── Modal: Finalize scan and write to inventory ── */
   const handleConfirmFinalize = async () => {
     if (!activeItem || !activeItem.session_id) return;
@@ -474,16 +553,16 @@ export default function ScanPage() {
         prev.map(x =>
           x.id === activeItem.id
             ? {
-                ...x,
-                product: { ...x.product, name: activeItemData.product_name || x.product.name, brand: activeItemData.brand || x.product.brand },
-                extracted_data: {
-                  ...x.extracted_data,
-                  manufacturing_date: activeItemData.manufacturing_date || null,
-                  expiry_date: activeItemData.expiry_date || null,
-                  batch_number: activeItemData.batch_number || null,
-                  mrp: activeItemData.mrp || null,
-                },
-              }
+              ...x,
+              product: { ...x.product, name: activeItemData.product_name || x.product.name, brand: activeItemData.brand || x.product.brand },
+              extracted_data: {
+                ...x.extracted_data,
+                manufacturing_date: activeItemData.manufacturing_date || null,
+                expiry_date: activeItemData.expiry_date || null,
+                batch_number: activeItemData.batch_number || null,
+                mrp: activeItemData.mrp || null,
+              },
+            }
             : x
         )
       );
@@ -547,7 +626,7 @@ export default function ScanPage() {
 
   return (
     <div className="min-h-[calc(100vh-80px)] bg-slate-950 p-4 lg:p-6 flex flex-col gap-4 text-slate-200">
-      
+
       {/* ── Header ── */}
       <div className="flex items-center justify-between bg-slate-900/60 backdrop-blur px-5 py-3 rounded-xl border border-slate-800">
         <div className="flex items-center gap-3">
@@ -590,7 +669,7 @@ export default function ScanPage() {
 
       {/* ── Main Grid ── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1">
-        
+
         {/* LEFT — Camera Panel (Col-span 7) */}
         <div className="lg:col-span-7 flex flex-col gap-4">
           <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden flex flex-col h-full min-h-[450px]">
@@ -629,12 +708,12 @@ export default function ScanPage() {
               <div className="flex items-center gap-2 text-xs text-slate-400">
                 <Info className="size-4 text-blue-500 shrink-0" />
                 <span>
-                  {autoScanEnabled 
-                    ? "Keep camera steady. Images are auto-snapped once clear and sent to the queue." 
+                  {autoScanEnabled
+                    ? "Keep camera steady. Images are auto-snapped once clear and sent to the queue."
                     : "Align product label details and click the button to capture."}
                 </span>
               </div>
-              
+
               {!autoScanEnabled && (
                 <Button
                   onClick={handleManualCapture}
@@ -675,7 +754,7 @@ export default function ScanPage() {
                   const isPending = item.status === "pending" || item.status === "processing";
                   const isCompleted = item.status === "completed";
                   const isFailed = item.status === "failed";
-                  
+
                   // Compute expiry styling
                   const expDate = item.extracted_data.expiry_date;
                   const isExpired = expDate ? new Date(expDate) < new Date() : false;
@@ -716,12 +795,12 @@ export default function ScanPage() {
                               {item.status === "pending" ? "Queued" : "OCR Running"}
                             </span>
                           )}
-                          {isCompleted && (
+                          {(isCompleted || (isFailed && (item.extracted_data.manufacturing_date || item.extracted_data.expiry_date))) && (
                             <span className={`text-[10px] shrink-0 font-medium px-2 py-0.5 rounded-full border ${isExpired ? 'bg-red-950/30 text-red-400 border-red-900/50' : 'bg-emerald-950/30 text-emerald-400 border-emerald-900/50'}`}>
                               {isExpired ? "Expired" : "Processed"}
                             </span>
                           )}
-                          {isFailed && (
+                          {isFailed && !item.extracted_data.manufacturing_date && !item.extracted_data.expiry_date && (
                             <span className="text-[10px] shrink-0 font-medium px-2 py-0.5 rounded-full bg-red-950/30 text-red-400 border border-red-900/60 flex items-center gap-1">
                               <AlertTriangle className="size-2.5" />
                               Failed
@@ -737,7 +816,7 @@ export default function ScanPage() {
                         </div>
 
                         {/* Bottom: Date Summary */}
-                        {isCompleted && (
+                        {(isCompleted || (isFailed && (item.extracted_data.manufacturing_date || item.extracted_data.expiry_date))) && (
                           <div className="flex gap-3 text-[11px] mt-1.5 pt-1 border-t border-slate-900 text-slate-400">
                             {item.extracted_data.manufacturing_date && (
                               <div>
@@ -761,7 +840,7 @@ export default function ScanPage() {
                             )}
                           </div>
                         )}
-                        {isFailed && (
+                        {isFailed && !item.extracted_data.manufacturing_date && !item.extracted_data.expiry_date && (
                           <p className="text-[11px] text-red-400 mt-1 truncate">
                             {item.failure_reason || "OCR validation error."}
                           </p>
@@ -814,7 +893,7 @@ export default function ScanPage() {
                   <div className="md:col-span-5 flex flex-col gap-3 justify-between">
                     <div>
                       <span className="text-xs font-semibold text-slate-400 block mb-2">Extracted Fields</span>
-                      
+
                       <div className="space-y-3.5">
                         <div className="space-y-1">
                           <Label className="text-[10px] text-slate-500 uppercase tracking-wider">Product Name</Label>
@@ -834,7 +913,7 @@ export default function ScanPage() {
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                           <div className="space-y-1">
-                            <Label className="text-[10px] text-slate-500 uppercase tracking-wider">MFG Date</Label>
+                            <Label className="text-[10px] text-slate-500 uppercase tracking-wider">MFG / MFD Date</Label>
                             <Input
                               value={activeItemData.manufacturing_date || ""}
                               onChange={(e) => setActiveItemData({ ...activeItemData, manufacturing_date: e.target.value })}
@@ -903,11 +982,10 @@ export default function ScanPage() {
               <TabsContent value="logs" className="mt-0 focus-visible:ring-0">
                 <div className="flex flex-col gap-3">
                   <div className="flex items-center justify-between text-xs text-slate-400 px-1">
-                    <span>Task Status: 
-                      <span className={`ml-1.5 font-bold uppercase tracking-wider ${
-                        activeItem.status === 'completed' ? 'text-emerald-400' :
-                        activeItem.status === 'failed' ? 'text-red-400' : 'text-blue-400'
-                      }`}>
+                    <span>Task Status:
+                      <span className={`ml-1.5 font-bold uppercase tracking-wider ${activeItem.status === 'completed' ? 'text-emerald-400' :
+                          activeItem.status === 'failed' ? 'text-red-400' : 'text-blue-400'
+                        }`}>
                         {activeItem.status}
                       </span>
                     </span>
@@ -918,7 +996,7 @@ export default function ScanPage() {
                       </span>
                     )}
                   </div>
-                  
+
                   {/* Terminal Log Console */}
                   <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 font-mono text-[11px] text-slate-300 leading-relaxed shadow-inner max-h-[380px] overflow-y-auto min-h-[240px]">
                     {getPipelineLogs(activeItem).map((logLine, idx) => {

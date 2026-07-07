@@ -26,6 +26,7 @@ from app.middleware.response_standardizer import ResponseStandardizationMiddlewa
 
 from app.config import settings
 from app.database import check_db_connection, get_db
+import app.utils.logger  # noqa: F401
 
 # Register all models on Base.metadata
 from app.models import (  # noqa: F401
@@ -75,6 +76,10 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "http://localhost:3002",
+        "http://127.0.0.1:3002",
         "http://localhost:8050",
         "http://127.0.0.1:8050",
     ],

@@ -1,6 +1,6 @@
 // API Service for interacting with the backend
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001/api/v1";
-const AUTH_BASE_URL = process.env.NEXT_PUBLIC_AUTH_URL || "http://localhost:8001";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+const AUTH_BASE_URL = process.env.NEXT_PUBLIC_AUTH_URL || "http://localhost:8000";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -114,6 +114,20 @@ export interface ApiResponse<T> {
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
+function unwrapApiData<T>(body: unknown): T {
+  if (
+    body &&
+    typeof body === "object" &&
+    "success" in body &&
+    "data" in body &&
+    (body as ApiResponse<T>).data !== undefined
+  ) {
+    return (body as ApiResponse<T>).data;
+  }
+
+  return body as T;
+}
+
 function getAuthToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("auth_token");
@@ -167,7 +181,8 @@ export const authApi = {
           : "Login failed";
       throw new Error(msg);
     }
-    return res.json() as Promise<{ access_token: string; token_type: string }>;
+    const body = await res.json();
+    return unwrapApiData<{ access_token: string; token_type: string }>(body);
   },
 
   async signup(name: string, email: string, password: string) {
@@ -186,7 +201,8 @@ export const authApi = {
           : "Signup failed";
       throw new Error(msg);
     }
-    return res.json() as Promise<{ access_token: string; token_type: string }>;
+    const body = await res.json();
+    return unwrapApiData<{ access_token: string; token_type: string }>(body);
   },
 
   async me(token: string) {
@@ -194,7 +210,8 @@ export const authApi = {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) throw new Error("Could not fetch user profile");
-    return res.json() as Promise<{ email: string; name: string }>;
+    const body = await res.json();
+    return unwrapApiData<{ email: string; name: string }>(body);
   },
 };
 

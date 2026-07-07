@@ -3,9 +3,13 @@ config.py — All settings loaded from environment / .env file.
 No hardcoded secrets or connection strings.
 """
 
+import os
+from dotenv import load_dotenv
 from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
 
+# Load environment variables from .env file into os.environ
+load_dotenv()
 
 class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://expiry_user:expiry_pass@localhost:5432/expiry_db"

@@ -21,7 +21,7 @@ export interface OCRData {
 }
 
 // Scan routes are mounted at /api/scan — separate from /api/v1
-const SCAN_BASE = "http://localhost:8001/api/scan";
+const SCAN_BASE = "http://localhost:8000/api/scan";
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;

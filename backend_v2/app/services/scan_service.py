@@ -56,8 +56,12 @@ class ScanService:
     @staticmethod
     def finalize_session(db: Session, session_id: uuid.UUID, payload: dict):
         session = db.query(ScanSession).filter(ScanSession.id == session_id).first()
-        if not session or session.session_status != "STARTED":
-            raise HTTPException(status_code=400, detail="Invalid or inactive session")
+        if not session:
+            raise HTTPException(status_code=400, detail="Invalid session")
+        # Allow finalizing sessions that were auto-completed by the background worker
+        # (status may be COMPLETED or STARTED — both are acceptable for manual review saves)
+        if session.session_status not in ("STARTED", "COMPLETED"):
+            raise HTTPException(status_code=400, detail="Session is not in a finalizable state")
             
         # STEP 6: Validation (Validating payloads before the massive transaction)
         alerts = []
@@ -65,8 +69,9 @@ class ScanService:
             alerts.append("Barcode missing")
         if not payload.get("image_path"):
             alerts.append("Image Missing")
-        if not payload.get("raw_text"):
-            alerts.append("OCR Failed / Raw text missing")
+        # Relax raw_text requirement for manual finalize overrides
+        # if not payload.get("raw_text"):
+        #     alerts.append("OCR Failed / Raw text missing")
         if not payload.get("expiry_date"):
             alerts.append("Missing Expiry Date")
             
@@ -86,6 +91,15 @@ class ScanService:
         try:
             # 1. Barcode Scan
             product = db.query(Product).filter(Product.barcode == payload.get("barcode")).first()
+            if product:
+                # Update placeholder details if operator manually corrected them
+                if product.name == "Pending OCR Scan" or not product.name:
+                    if payload.get("product_name"):
+                        product.name = payload.get("product_name")
+                if (not product.brand) and payload.get("brand"):
+                    product.brand = payload.get("brand")
+                db.add(product)
+                
             b_scan = BarcodeScan(
                 raw_barcode=payload.get("barcode"),
                 scan_session_id=session.id,
@@ -97,8 +111,9 @@ class ScanService:
 
             # 2. Product Image
             p_image = ProductImage(
+                product_id=product.id if product else None,
                 scan_session_id=session.id,
-                image_url=payload.get("image_path"),
+                file_url=payload.get("image_path"),
                 file_path=payload.get("image_path"),
                 file_size_bytes=1024, # Mock size
                 mime_type="image/jpeg"

@@ -21,10 +21,10 @@ logger = logging.getLogger(__name__)
 # ── Pydantic Schema ───────────────────────────────────────────────────────────
 
 class StructuredExtractionResult(BaseModel):
-    mfg_date: Optional[date] = Field(
+    mfg_date: Optional[str] = Field(
         None, description="The manufacturing date in YYYY-MM-DD format."
     )
-    expiry_date: Optional[date] = Field(
+    expiry_date: Optional[str] = Field(
         None, description="The expiration or best-before date in YYYY-MM-DD format."
     )
     batch_number: Optional[str] = Field(
@@ -117,41 +117,56 @@ def build_vision_prompt(is_crop: bool) -> str:
 def _extract_via_gemini(
     image_bytes: bytes, mime_type: str, api_key: str, is_crop: bool = False
 ) -> StructuredExtractionResult:
-    """Invokes Gemini Vision via prompt-driven JSON output with retry and model fallback."""
-    import google.generativeai as genai
+    """Invokes Gemini Vision via REST API (works with all key formats including AQ. keys)."""
+    import urllib.request
     import time
 
-    genai.configure(api_key=api_key)
-    image_part = {"mime_type": mime_type, "data": image_bytes}
     prompt = build_vision_prompt(is_crop)
+    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
-    # Try multiple models in order of preference (lite is cheaper but may hit quota first)
-    models_to_try = ["gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-2.5-flash"]
+    payload = json.dumps({
+        "contents": [{
+            "parts": [
+                {"text": prompt},
+                {"inline_data": {"mime_type": mime_type, "data": image_b64}}
+            ]
+        }],
+        "generationConfig": {"temperature": 0.05}
+    }).encode("utf-8")
+
+    models_to_try = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"]
     last_error = None
 
     for model_name in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
         for attempt in range(3):
             try:
-                model = genai.GenerativeModel(model_name)
-                response = model.generate_content(
-                    [prompt, image_part],
-                    generation_config=genai.types.GenerationConfig(temperature=0.05)
+                req = urllib.request.Request(
+                    url,
+                    data=payload,
+                    headers={"Content-Type": "application/json"},
+                    method="POST"
                 )
-                text = response.text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    result = json.loads(resp.read().decode("utf-8"))
+
+                text = result["candidates"][0]["content"]["parts"][0]["text"]
+                text = text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
                 data = json.loads(text)
-                logger.info(f"[VisionLLM] Gemini extraction succeeded with model={model_name} on attempt {attempt+1}")
+                logger.info(f"[VisionLLM] Gemini REST extraction succeeded: model={model_name} attempt={attempt+1}")
                 return StructuredExtractionResult.model_validate(data)
+
             except Exception as e:
                 last_error = e
                 error_str = str(e)
-                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str or "quota" in error_str.lower():
+                if "429" in error_str or "quota" in error_str.lower() or "RESOURCE_EXHAUSTED" in error_str:
                     wait = min(2 ** attempt * 5, 30)
-                    logger.warning(f"[VisionLLM] Quota exhausted for {model_name} (attempt {attempt+1}), waiting {wait}s before retry...")
+                    logger.warning(f"[VisionLLM] Rate limit on {model_name} attempt {attempt+1}, waiting {wait}s...")
                     time.sleep(wait)
-                    continue  # retry same model
+                    continue
                 else:
-                    logger.warning(f"[VisionLLM] Model {model_name} failed (non-quota): {e}")
-                    break  # try next model
+                    logger.warning(f"[VisionLLM] {model_name} failed (non-quota): {e}")
+                    break
 
     raise last_error if last_error else RuntimeError("All Gemini models exhausted")
 
@@ -208,38 +223,48 @@ TEXT_PARSE_PROMPT = (
 
 
 def _parse_text_via_gemini(raw_text: str, api_key: str) -> StructuredExtractionResult:
-    """Send raw OCR text to Gemini via prompt-driven JSON output with retry and model fallback."""
-    import google.generativeai as genai
+    """Send raw OCR text to Gemini via REST API (works with all key formats)."""
+    import urllib.request
     import time
 
-    genai.configure(api_key=api_key)
     prompt = TEXT_PARSE_PROMPT.format(raw_text=raw_text)
+    payload = json.dumps({
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.05}
+    }).encode("utf-8")
 
-    models_to_try = ["gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-2.5-flash"]
+    models_to_try = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"]
     last_error = None
 
     for model_name in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
         for attempt in range(3):
             try:
-                model = genai.GenerativeModel(model_name)
-                response = model.generate_content(
-                    prompt,
-                    generation_config=genai.types.GenerationConfig(temperature=0.05)
+                req = urllib.request.Request(
+                    url,
+                    data=payload,
+                    headers={"Content-Type": "application/json"},
+                    method="POST"
                 )
-                text = response.text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+                with urllib.request.urlopen(req, timeout=20) as resp:
+                    result = json.loads(resp.read().decode("utf-8"))
+
+                text = result["candidates"][0]["content"]["parts"][0]["text"]
+                text = text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
                 data = json.loads(text)
-                logger.info(f"[TextLLM] Gemini text parse succeeded with model={model_name} on attempt {attempt+1}")
+                logger.info(f"[TextLLM] Gemini REST text parse succeeded: model={model_name} attempt={attempt+1}")
                 return StructuredExtractionResult.model_validate(data)
+
             except Exception as e:
                 last_error = e
                 error_str = str(e)
-                if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str or "quota" in error_str.lower():
+                if "429" in error_str or "quota" in error_str.lower() or "RESOURCE_EXHAUSTED" in error_str:
                     wait = min(2 ** attempt * 5, 30)
-                    logger.warning(f"[TextLLM] Quota exhausted for {model_name} (attempt {attempt+1}), waiting {wait}s...")
+                    logger.warning(f"[TextLLM] Rate limit on {model_name} attempt {attempt+1}, waiting {wait}s...")
                     time.sleep(wait)
                     continue
                 else:
-                    logger.warning(f"[TextLLM] Model {model_name} failed: {e}")
+                    logger.warning(f"[TextLLM] {model_name} failed: {e}")
                     break
 
     raise last_error if last_error else RuntimeError("All Gemini models exhausted")
@@ -324,6 +349,23 @@ def _parse_text_via_huggingface(raw_text: str, api_key: str) -> StructuredExtrac
     cleaned = generated_text.strip().replace("```json", "").replace("```", "").strip()
     data = json.loads(cleaned)
     return StructuredExtractionResult.model_validate(data)
+def is_valid_gemini_key(key: Optional[str]) -> bool:
+    if not key:
+        return False
+    key = key.strip()
+    return (key.startswith("AIzaSy") or key.startswith("AQ.")) and len(key) >= 20
+
+def is_valid_openai_key(key: Optional[str]) -> bool:
+    if not key:
+        return False
+    key = key.strip()
+    return key.startswith("sk-") and len(key) >= 20
+
+def is_valid_hf_key(key: Optional[str]) -> bool:
+    if not key:
+        return False
+    key = key.strip()
+    return key.startswith("hf_") and len(key) >= 20
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -340,8 +382,13 @@ def extract_structured_fields_via_llm(
     gemini_key = os.environ.get("GEMINI_API_KEY")
     openai_key = os.environ.get("OPENAI_API_KEY")
 
+    if not is_valid_gemini_key(gemini_key):
+        gemini_key = None
+    if not is_valid_openai_key(openai_key):
+        openai_key = None
+
     if not gemini_key and not openai_key:
-        logger.info("[VisionLLM] No API keys configured. Skipping Vision LLM.")
+        logger.info("[VisionLLM] No valid API keys configured. Skipping Vision LLM.")
         return None
 
     # Load image bytes from path or base64
@@ -392,8 +439,15 @@ def extract_structured_fields_from_text(
     openai_key = os.environ.get("OPENAI_API_KEY")
     hf_key = os.environ.get("HUGGINGFACE_API_KEY")
 
+    if not is_valid_gemini_key(gemini_key):
+        gemini_key = None
+    if not is_valid_openai_key(openai_key):
+        openai_key = None
+    if not is_valid_hf_key(hf_key):
+        hf_key = None
+
     if not gemini_key and not openai_key and not hf_key:
-        logger.info("[TextLLM] No API keys configured. Skipping text LLM.")
+        logger.info("[TextLLM] No valid API keys configured. Skipping text LLM.")
         return None
 
     try:

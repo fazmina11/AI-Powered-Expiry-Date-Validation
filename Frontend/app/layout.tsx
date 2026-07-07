@@ -25,6 +25,10 @@ export const metadata: Metadata = {
   description:
     "Transform your business with intelligent AI automation solutions. Empower your organization to operate at the speed of thought.",
   generator: "v0.app",
+  icons: {
+    icon: "/icon.svg",
+    apple: "/apple-icon.png",
+  },
 }
 
 export default function RootLayout({
