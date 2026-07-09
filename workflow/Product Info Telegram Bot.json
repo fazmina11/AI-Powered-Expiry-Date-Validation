@@ -1,0 +1,1743 @@
+{
+  "name": "Product Info Telegram Bot",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "71ba8515-b2eb-484f-89fb-a95627f88e2c",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -272,
+        112
+      ],
+      "webhookId": "615cfa37-a421-4a6d-a18c-7ba46a343650",
+      "credentials": {
+        "telegramApi": {
+          "id": "AWBMRTxDOje1YqSC",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.text }}",
+        "options": {
+          "systemMessage": "You are a professional product-information assistant for a Telegram support bot that is part of an expiry-date validation system. Maintain a courteous, precise, and professional tone at all times, like a knowledgeable customer service representative. Avoid slang, casual language, emojis, and filler sentences.\n\nUsers will refer to products in natural language in many ways, for example:\n- \"what is this product\" or \"what are the ingredients\" (referring to a barcode/name mentioned earlier)\n- a barcode number sent on its own\n- a product name sent on its own, e.g. \"Maggi noodles\"\n- a question naming the product directly, e.g. \"what are the ingredients of Maggi noodles and is it healthy\"\n- a health question about a product already discussed, e.g. \"is this healthy\"\n\nYou have two tools:\n- \"Search Open Food Facts By Barcode\": use when the message contains a barcode-like number (a sequence of 8-14 digits).\n- \"Search Open Food Facts By Name\": use whenever the message names a product (brand and/or product name), even if it is embedded inside a longer question. Extract just the product name to pass to the tool.\n\nBehavior rules:\n1. If the message contains a barcode-like number, call \"Search Open Food Facts By Barcode\" first. Otherwise, if it names a product, call \"Search Open Food Facts By Name\" using only the product name portion of the message.\n2. If the user asks a follow-up question without giving a new identifier, reuse the barcode or product name established earlier in this conversation. Do not ask the user to repeat it unless nothing is known yet.\n3. If a lookup returns no product, or an error occurs, state professionally that the product could not be found or the lookup service is temporarily unavailable, and suggest checking the barcode/name or trying again shortly. Never expose raw error messages, status codes, or technical details.\n\nResponse style - be concise and precise, not exhaustive:\n4. Default to a short, scannable reply using this structure, using Telegram Markdown bold (*text*) for section labels, and omitting any section with no data:\n*Product name*\nBrand, category (one line)\n\n*Ingredients*\nOne line, comma-separated, only the ingredient list itself\n\n*Nutrition (per 100g)*\nEnergy, protein, fat, sugar on one compact line, only values that are available\n\n*Health assessment*\nOne or two sentences maximum, grounded in the Nutri-Score grade and any notably high nutrients (e.g. sugar, saturated fat, sodium). End with a brief, neutral note that this reflects general nutritional quality rather than personalized dietary advice.\n5. If the user asks for only one thing (e.g. only ingredients, or only \"is this healthy\"), answer with only that section - do not include the full product summary unless they ask for full details.\n6. Never pad the reply with pleasantries, disclaimers beyond what rule 4 specifies, or repeating the question back to the user.\n7. Never claim to have checked an internal or local database - all data comes only from Open Food Facts.\n8. If genuinely unsure or a lookup fails after retries, apologize briefly and professionally in one sentence rather than guessing or fabricating details.",
+          "maxIterations": 6
+        }
+      },
+      "id": "fe3233c5-9bae-4748-8ded-4b24e28b3d9a",
+      "name": "Product Info Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        944,
+        624
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1500,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "51bffc77-51e5-43e1-8488-a4b45847c6e4",
+      "name": "OpenAI Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        896,
+        1008
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "YPSjgfavCL2XEZLS",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.chat_id }}",
+        "contextWindowLength": 10
+      },
+      "id": "e1d0f729-a65a-47ff-8466-e06c20326d29",
+      "name": "Conversation Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        1056,
+        1008
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://world.openfoodfacts.org/api/v2/product/{{ $fromAI('barcode', 'The numeric barcode, EAN-13, or UPC of the product', 'string') }}.json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "code,product_name,brands,categories,ingredients_text,nutriments,nutrition_grades,quantity,packaging,labels,allergens,stores,countries,image_url,status"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "ExpiryValidationTelegramBot/1.0 (contact@example.com)"
+            }
+          ]
+        },
+        "options": {
+          "response": {},
+          "timeout": 15000
+        }
+      },
+      "id": "29b41578-49eb-452b-bafe-ba88094363b5",
+      "name": "Search Open Food Facts By Barcode",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        1200,
+        1008
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 800,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://world.openfoodfacts.org/cgi/search.pl",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "search_terms",
+              "value": "={{ $fromAI('product_name', 'The name of the product to search for', 'string') }}"
+            },
+            {
+              "name": "json",
+              "value": "1"
+            },
+            {
+              "name": "page_size",
+              "value": "5"
+            },
+            {
+              "name": "fields",
+              "value": "code,product_name,brands,categories,ingredients_text,nutriments,nutrition_grades,quantity,image_url"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "ExpiryValidationTelegramBot/1.0 (contact@example.com)"
+            }
+          ]
+        },
+        "options": {
+          "response": {},
+          "timeout": 15000
+        }
+      },
+      "id": "fa55e3f4-dd0f-43ab-aa1f-8db7afb4c912",
+      "name": "Search Open Food Facts By Name",
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        1360,
+        1008
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 800,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $node[\"Telegram Trigger\"].json.message.chat.id }}",
+        "text": "={{ $json.output }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "bfeb54e5-b232-4a5b-bc58-ac986f5100fa",
+      "name": "Send Telegram Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1616,
+        752
+      ],
+      "webhookId": "beed8831-8612-444f-86f1-6f3ad41ad4cd",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "telegramApi": {
+          "id": "AWBMRTxDOje1YqSC",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $node[\"Telegram Trigger\"].json.message.chat.id }}",
+        "text": "We apologize for the inconvenience. Your request could not be processed due to a temporary service issue. Please try again in a moment, or resend the product barcode if the issue persists.",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "50459ac8-23ec-41c3-87ee-e3d57a390f74",
+      "name": "Send Fallback Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1616,
+        976
+      ],
+      "webhookId": "2264cd52-8957-49f2-bf6a-1938a6a14188",
+      "credentials": {
+        "telegramApi": {
+          "id": "AWBMRTxDOje1YqSC",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "backend_base_url",
+              "type": "string",
+              "value": "https://charred-issuing-slit.ngrok-free.dev"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "cfg-0001-node-0001-000000000001",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -48,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = $json.message || $json;\n\nconst chatId = msg.chat?.id;\nconst userId = msg.from?.id;\nconst username = msg.from?.username || msg.from?.first_name || \"telegram_user\";\nconst text = (msg.text || \"\").trim();\n\nlet command = \"\";\nlet argument = \"\";\n\nif (text.startsWith(\"/\")) {\n  const firstSpaceIndex = text.indexOf(\" \");\n  if (firstSpaceIndex === -1) {\n    command = text.toLowerCase();\n    argument = \"\";\n  } else {\n    command = text.substring(0, firstSpaceIndex).toLowerCase();\n    argument = text.substring(firstSpaceIndex + 1).trim();\n  }\n} else {\n  command = \"unknown\";\n  argument = text;\n}\n\nreturn [\n  {\n    json: {\n      chat_id: chatId,\n      user_id: userId,\n      username,\n      text,\n      command,\n      argument,\n      backend_base_url: $json.backend_base_url\n    }\n  }\n];"
+      },
+      "id": "cfg-0001-node-0001-000000000002",
+      "name": "Parse Telegram Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        176,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "/start",
+                    "id": "d00f352f-0259-40ea-9f45-b6de00bb9590"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "/help",
+                    "id": "4277e431-2e52-4f11-8be4-f86b7a899e0a"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "/product",
+                    "id": "15aab3db-f78a-4036-b9ff-b7e6c60ce154"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "/ask",
+                    "id": "afa87605-e84a-4925-97f7-62dcb856d7e6"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.command }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "unknown",
+                    "id": "f5403c2d-e00f-413e-8b75-cccff172fcd4"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Unrecognized"
+        }
+      },
+      "id": "cfg-0001-node-0001-000000000003",
+      "name": "Route Command",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        400,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "👋 Welcome to Expiry Validation Assistant\n\nYou can use me to check product details and ask product-related database questions.\n\nCommands:\n\n/product <barcode_or_name_or_id_or_sku>\nExample:\n/product 8901262010011\n/product Amul Milk\n\n/ask <question>\nExample:\n/ask What is the expiry date of Amul Milk?\n/ask Show ingredients of 8901262010011\n\n/help - Show available commands",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "cfg-0001-node-0001-000000000004",
+      "name": "Send Start Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        528,
+        -512
+      ],
+      "webhookId": "5affab65-4ac4-4880-b982-74945720a582",
+      "credentials": {
+        "telegramApi": {
+          "id": "AWBMRTxDOje1YqSC",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "📘 Help - Expiry Validation Assistant\n\nAvailable commands:\n\n1. Product Lookup\n/product <barcode_or_name_or_id_or_sku>\n\nExamples:\n/product 8901262010011\n/product Amul Milk\n/product AMUL-TAAZA-500ML\n\n2. Ask Product Questions\n/ask <question>\n\nExamples:\n/ask What is the expiry date of Amul Milk?\n/ask What is the batch number of Amul Milk?\n/ask Show ingredients of 8901262010011\n/ask Show nutrition details of Amul Milk\n/ask How should I store Amul Milk?\n/ask Is Amul Milk expired?\n\nNote:\nI can answer only product-related database questions.",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "cfg-0001-node-0001-000000000005",
+      "name": "Send Help Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        752,
+        -320
+      ],
+      "webhookId": "a99f151e-a71c-430a-8ecb-cc89f39637e7",
+      "credentials": {
+        "telegramApi": {
+          "id": "AWBMRTxDOje1YqSC",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.argument }}",
+              "operator": {
+                "operation": "equals",
+                "type": "string"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "id": "cfg-0001-node-0001-000000000006",
+      "name": "Check Product Argument",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        944,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "⚠️ Please provide a product barcode, name, ID, or SKU.\n\nExamples:\n/product 8901262010011\n/product Amul Milk\n/product AMUL-TAAZA-500ML",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "cfg-0001-node-0001-000000000007",
+      "name": "Send Product Usage Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1552,
+        -240
+      ],
+      "webhookId": "8476d15c-ebdc-4c28-813d-d2f51e545631",
+      "credentials": {
+        "telegramApi": {
+          "id": "AWBMRTxDOje1YqSC",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.backend_base_url }}/api/v1/products/search",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ $json.argument }}"
+            },
+            {
+              "name": "request_source",
+              "value": "TELEGRAM"
+            },
+            {
+              "name": "requested_by",
+              "value": "={{ $json.username }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ngrok-skip-browser-warning",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "response": {},
+          "timeout": 15000
+        }
+      },
+      "id": "cfg-0001-node-0001-000000000008",
+      "name": "Product Search Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1280,
+        -32
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst chatId = $('Parse Telegram Message').first().json.chat_id;\n\nfunction nutritionToText(nutrition) {\n  if (!nutrition || typeof nutrition !== \"object\") {\n    return \"Not available\";\n  }\n  const entries = Object.entries(nutrition);\n  if (entries.length === 0) {\n    return \"Not available\";\n  }\n  return entries.map(([key, value]) => `${key}: ${value}`).join(\"\\n\");\n}\n\nlet message = \"\";\n\nif (data.error) {\n  message =\n`⚠️ Service Temporarily Unavailable\n\nI could not reach the backend right now.\nPlease check whether the backend service is running.`;\n} else if (data.status === \"FOUND\") {\n  const product = data.product || (data.products && data.products[0]);\n\n  if (product) {\n    message =\n`📦 Product Found\n\nName: ${product.name || \"Not available\"}\nBrand: ${product.brand || \"Not available\"}\nCategory: ${product.category || \"Not available\"}\nSKU: ${product.sku || \"Not available\"}\nBarcode: ${product.barcode || \"Not available\"}\n\nIngredients:\n${product.ingredients || \"Not available\"}\n\nNutrition:\n${nutritionToText(product.nutrition_info)}\n\nStorage:\n${product.storage_instruction || \"Not available\"}\n\nSource:\n${data.source || \"Not available\"}`;\n  } else if (data.products && data.products.length > 0) {\n    message = \"📦 Products Found\\n\\n\" + data.products.map((p, index) => {\n      return `${index + 1}. ${p.name || \"Unknown Product\"}\nBrand: ${p.brand || \"Not available\"}\nCategory: ${p.category || \"Not available\"}\nBarcode: ${p.barcode || \"Not available\"}`;\n    }).join(\"\\n\\n\");\n  } else {\n    message = \"Product found, but response format was unexpected.\";\n  }\n} else if (data.status === \"NOT_FOUND\") {\n  message =\n`❌ Product Not Found\n\nQuery: ${data.query || \"Not available\"}\n\n${data.message || \"Product was not found.\"}\n\nSuggested Action:\n${data.suggested_action || \"Create a new product master record.\"}`;\n} else if (data.status === \"INVALID_QUERY\") {\n  message =\n`⚠️ Invalid Product Query\n\n${data.message || \"Please provide a barcode, product name, product ID, or SKU.\"}`;\n} else {\n  message =\n`⚠️ Product Lookup Failed\n\nStatus: ${data.status || \"Unknown\"}\nMessage: ${data.message || \"Unexpected response from backend.\"}`;\n}\n\nreturn [\n  {\n    json: {\n      chat_id: chatId,\n      message\n    }\n  }\n];"
+      },
+      "id": "cfg-0001-node-0001-000000000009",
+      "name": "Format Product Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1536,
+        -32
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "cfg-0001-node-0001-000000000010",
+      "name": "Send Product Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1840,
+        -32
+      ],
+      "webhookId": "35559064-0ef6-468d-a346-bab856a824e0",
+      "credentials": {
+        "telegramApi": {
+          "id": "AWBMRTxDOje1YqSC",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.argument }}",
+              "operator": {
+                "operation": "equals",
+                "type": "string"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "id": "cfg-0001-node-0001-000000000011",
+      "name": "Check Ask Argument",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        928,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "⚠️ Please enter a product-related question.\n\nExamples:\n/ask What is the expiry date of Amul Milk?\n/ask Show ingredients of 8901262010011\n/ask Is Amul Milk expired?",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "cfg-0001-node-0001-000000000012",
+      "name": "Send Ask Usage Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1552,
+        208
+      ],
+      "webhookId": "9434d226-8174-424e-9582-9bedde84a12f",
+      "credentials": {
+        "telegramApi": {
+          "id": "AWBMRTxDOje1YqSC",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.backend_base_url }}/api/v1/products/ask",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ngrok-skip-browser-warning",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { question: $json.argument, request_source: \"TELEGRAM\", requested_by: $json.username, telegram_chat_id: String($json.chat_id), telegram_user_id: String($json.user_id), n8n_execution_id: $execution.id } }}",
+        "options": {
+          "response": {},
+          "timeout": 15000
+        }
+      },
+      "id": "cfg-0001-node-0001-000000000013",
+      "name": "Ask Backend Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1280,
+        400
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst chatId = $('Parse Telegram Message').first().json.chat_id;\nlet message = \"\";\n\nfunction escapeMarkdown(text) {\n  if (!text) return text;\n  return String(text).replace(/([_*\\[\\]()~`>#+=|{}.!\\-])/g, \"\\\\$1\");\n}\n\nif (data.error) {\n  message =\n`⚠️ Service Temporarily Unavailable\n\nI could not reach the backend right now.\nPlease check whether the backend service is running.`;\n} else if (data.status === \"ANSWERED\") {\n  const d = data.data || {};\n\n  if (data.intent === \"EXPIRY_DATE\") {\n    message =\n`📅 Expiry Date\n\nProduct: ${escapeMarkdown(d.product_name) || \"Not available\"}\nBarcode: ${escapeMarkdown(d.barcode) || \"Not available\"}\nBatch: ${escapeMarkdown(d.batch_number) || \"Not available\"}\nExpiry Date: ${escapeMarkdown(d.expiry_date) || \"Not available\"}\nStatus: ${escapeMarkdown(d.pipeline_status) || \"Not available\"}`;\n  } else if (data.intent === \"MFG_DATE\") {\n    message =\n`🏭 Manufacturing Date\n\nProduct: ${escapeMarkdown(d.product_name) || \"Not available\"}\nBatch: ${escapeMarkdown(d.batch_number) || \"Not available\"}\nMFG Date: ${escapeMarkdown(d.manufacturing_date) || \"Not available\"}\nStatus: ${escapeMarkdown(d.pipeline_status) || \"Not available\"}`;\n  } else if (data.intent === \"BATCH_NUMBER\") {\n    message =\n`🔢 Batch Number\n\nProduct: ${escapeMarkdown(d.product_name) || \"Not available\"}\nBatch: ${escapeMarkdown(d.batch_number) || \"Not available\"}\nMFG Date: ${escapeMarkdown(d.manufacturing_date) || \"Not available\"}\nExpiry Date: ${escapeMarkdown(d.expiry_date) || \"Not available\"}`;\n  } else if (data.intent === \"INGREDIENTS\") {\n    message =\n`🥣 Ingredients\n\nProduct: ${escapeMarkdown(d.product_name) || \"Not available\"}\n\n${escapeMarkdown(d.ingredients) || \"Ingredients not available\"}`;\n  } else if (data.intent === \"NUTRITION\") {\n    const nutrition = d.nutrition_info || {};\n    const nutritionText = Object.keys(nutrition).length\n      ? Object.entries(nutrition).map(([k, v]) => `${escapeMarkdown(k)}: ${escapeMarkdown(v)}`).join(\"\\n\")\n      : \"Nutrition information not available\";\n\n    message =\n`🍽️ Nutrition Information\n\nProduct: ${escapeMarkdown(d.product_name) || \"Not available\"}\n\n${nutritionText}`;\n  } else if (data.intent === \"STORAGE_INSTRUCTION\") {\n    message =\n`🧊 Storage Instruction\n\nProduct: ${escapeMarkdown(d.product_name) || \"Not available\"}\n\n${escapeMarkdown(d.storage_instruction) || \"Storage instruction not available\"}`;\n  } else if (data.intent === \"PRODUCT_STATUS\") {\n    message =\n`✅ Product Status\n\nProduct: ${escapeMarkdown(d.product_name) || \"Not available\"}\nBatch: ${escapeMarkdown(d.batch_number) || \"Not available\"}\nExpiry Date: ${escapeMarkdown(d.expiry_date) || \"Not available\"}\nStatus: ${escapeMarkdown(d.status) || \"Not available\"}\nPipeline Status: ${escapeMarkdown(d.pipeline_status) || \"Not available\"}`;\n  } else if (data.intent === \"PRODUCT_DETAILS\") {\n    const p = d.product || {};\n    message =\n`📦 Product Details\n\nName: ${escapeMarkdown(p.name) || \"Not available\"}\nBrand: ${escapeMarkdown(p.brand) || \"Not available\"}\nCategory: ${escapeMarkdown(p.category) || \"Not available\"}\nSKU: ${escapeMarkdown(p.sku) || \"Not available\"}\nBarcode: ${escapeMarkdown(p.barcode) || \"Not available\"}\n\nDescription:\n${escapeMarkdown(p.description) || \"Not available\"}\n\nStorage:\n${escapeMarkdown(p.storage_instruction) || \"Not available\"}`;\n  } else {\n    message = escapeMarkdown(data.answer) || \"Answer found.\";\n  }\n} else if (data.status === \"NOT_FOUND\") {\n  message =\n`❌ Not Found\n\n${escapeMarkdown(data.answer) || \"No matching product data was found.\"}`;\n} else if (data.status === \"UNSUPPORTED_INTENT\") {\n  message =\n`⚠️ Unsupported Question\n\n${escapeMarkdown(data.answer) || \"I can only answer product-related database questions.\"}\n\nTry:\n/ask What is the expiry date of Amul Milk?\n/ask Show ingredients of 8901262010011`;\n} else if (data.status === \"INVALID_QUESTION\") {\n  message =\n`⚠️ Invalid Question\n\nPlease ask a product-related question.\n\nExample:\n/ask What is the expiry date of Amul Milk?`;\n} else {\n  message =\n`⚠️ Question Failed\n\nStatus: ${escapeMarkdown(data.status) || \"Unknown\"}\nMessage: ${escapeMarkdown(data.answer) || \"Unexpected response from backend.\"}`;\n}\n\nreturn [\n  {\n    json: {\n      chat_id: chatId,\n      message\n    }\n  }\n];"
+      },
+      "id": "cfg-0001-node-0001-000000000014",
+      "name": "Format Ask Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1536,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "MarkdownV2"
+        }
+      },
+      "id": "cfg-0001-node-0001-000000000015",
+      "name": "Send Ask Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1840,
+        400
+      ],
+      "webhookId": "9605adf1-88bd-47bb-836c-265190e49771",
+      "credentials": {
+        "telegramApi": {
+          "id": "AWBMRTxDOje1YqSC",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "⚠️ Unknown command.\n\nUse /help to see available commands.\n\nExamples:\n/product 8901262010011\n/ask What is the expiry date of Amul Milk?",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "cfg-0001-node-0001-000000000016",
+      "name": "Send Unknown Command Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        560,
+        624
+      ],
+      "webhookId": "bfb78633-fa2b-4931-9ece-e7cdea345234",
+      "credentials": {
+        "telegramApi": {
+          "id": "AWBMRTxDOje1YqSC",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.argument }}",
+              "operator": {
+                "operation": "equals",
+                "type": "string"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "id": "0e734e03-8c97-4e76-9b47-04f3afd34869",
+      "name": "Check Category Argument",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        944,
+        1312
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "⚠️ Please provide a category name.\n\nExamples:\n/category Dairy\n/category Spices\n/category Beverages",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "2e844079-a17c-47b2-87a5-8c547763f1d6",
+      "name": "Send Category Usage Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1552,
+        1152
+      ],
+      "webhookId": "cef62cd4-de87-415f-b652-f0bd6621b0d7",
+      "credentials": {
+        "telegramApi": {
+          "id": "AWBMRTxDOje1YqSC",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.backend_base_url }}/api/v1/products/category",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "category",
+              "value": "={{ $json.argument }}"
+            },
+            {
+              "name": "request_source",
+              "value": "TELEGRAM"
+            },
+            {
+              "name": "requested_by",
+              "value": "={{ $json.username }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ngrok-skip-browser-warning",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "response": {},
+          "timeout": 15000
+        }
+      },
+      "id": "02d8e6bd-c32e-4861-8528-fd8eb018c575",
+      "name": "Category Search Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1280,
+        1312
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst chatId = $('Parse Telegram Message').first().json.chat_id;\n\nlet message = \"\";\n\nif (data.error) {\n  message =\n`⚠️ Service Temporarily Unavailable\n\nI could not reach the backend right now.\nPlease check whether the backend service is running.`;\n} else if (data.status === \"FOUND\") {\n  const products = data.products || [];\n  if (products.length > 0) {\n    message = `📂 Category: ${data.category || \"Not available\"}\\n\\n` + products.map((p, index) => {\n      return `${index + 1}. ${p.name || \"Unknown Product\"}\\nBrand: ${p.brand || \"Not available\"}\\nSKU: ${p.sku || \"Not available\"}\\nBarcode: ${p.barcode || \"Not available\"}`;\n    }).join(\"\\n\\n\") + `\\n\\nTotal: ${products.length} product(s)`;\n  } else {\n    message = \"Category found, but no products were returned.\";\n  }\n} else if (data.status === \"NOT_FOUND\") {\n  message =\n`❌ No Products Found\n\nCategory: ${data.category || data.query || \"Not available\"}\n\n${data.message || \"No products exist in this category.\"}`;\n} else if (data.status === \"INVALID_QUERY\") {\n  message =\n`⚠️ Invalid Category\n\n${data.message || \"Please provide a valid category name.\"}`;\n} else {\n  message =\n`⚠️ Category Lookup Failed\n\nStatus: ${data.status || \"Unknown\"}\nMessage: ${data.message || \"Unexpected response from backend.\"}`;\n}\n\nreturn [\n  {\n    json: {\n      chat_id: chatId,\n      message\n    }\n  }\n];"
+      },
+      "id": "1b0a374b-470e-4258-93f6-c9331449dea7",
+      "name": "Format Category Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1536,
+        1312
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "3953a5bd-95f1-4007-a58b-3ba5f2906a2a",
+      "name": "Send Category Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1840,
+        1312
+      ],
+      "webhookId": "ccecb001-d4a5-467c-94c5-00d3182390ab",
+      "credentials": {
+        "telegramApi": {
+          "id": "AWBMRTxDOje1YqSC",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.argument }}",
+              "operator": {
+                "operation": "equals",
+                "type": "string"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "id": "d6a5530b-1582-4c39-bd53-406af34f4253",
+      "name": "Check Remove Argument",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        944,
+        1600
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "⚠️ Please provide a product identifier to remove (barcode, SKU, or name).\n\nExample:\n/remove 8901262010011\n/remove AMUL-TAAZA-500ML\n\nYou will be asked to confirm before anything is deleted.",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "a55cffe9-5aef-4f2a-a7ff-bc014604570c",
+      "name": "Send Remove Usage Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1552,
+        1456
+      ],
+      "webhookId": "d0e3d5f1-77ea-46d3-9942-f7ba3978504f",
+      "credentials": {
+        "telegramApi": {
+          "id": "AWBMRTxDOje1YqSC",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = ($json.argument || \"\").trim();\nconst tokens = raw.split(/\\s+/).filter(Boolean);\n\nlet confirmed = false;\nlet identifierTokens = tokens;\n\nif (tokens.length > 0 && tokens[tokens.length - 1].toLowerCase() === \"confirm\") {\n  confirmed = true;\n  identifierTokens = tokens.slice(0, -1);\n}\n\nconst identifier = identifierTokens.join(\" \").trim();\n\nreturn [\n  {\n    json: {\n      ...$json,\n      identifier,\n      confirmed\n    }\n  }\n];"
+      },
+      "id": "6793f151-e7c0-452a-87eb-203c4f467145",
+      "name": "Parse Remove Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        1600
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.confirmed }}",
+              "operator": {
+                "operation": "equals",
+                "type": "boolean"
+              },
+              "rightValue": false
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "id": "9c3d6d01-9d96-4ccb-b4a1-377af0c8799c",
+      "name": "Check Remove Confirmed",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1536,
+        1600
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=⚠️ Confirm Deletion\n\nYou are about to permanently remove the product record matching:\n{{ $json.identifier }}\n\nThis action cannot be undone.\n\nTo confirm, resend:\n/remove {{ $json.identifier }} confirm",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "4fd98a5c-78e3-4b4d-bad1-5cee8f876012",
+      "name": "Send Remove Confirmation Prompt",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1792,
+        1456
+      ],
+      "webhookId": "857a98be-cd51-476a-a2e2-2a5202aad4b5",
+      "credentials": {
+        "telegramApi": {
+          "id": "AWBMRTxDOje1YqSC",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "={{ $json.backend_base_url }}/api/v1/products/delete",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ngrok-skip-browser-warning",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { identifier: $json.identifier, request_source: \"TELEGRAM\", requested_by: $json.username, telegram_chat_id: String($json.chat_id), telegram_user_id: String($json.user_id), n8n_execution_id: $execution.id } }}",
+        "options": {
+          "response": {},
+          "timeout": 15000
+        }
+      },
+      "id": "0f6a4088-1053-4cc6-a7e1-c29489c347a4",
+      "name": "Remove Product Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1792,
+        1600
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst chatId = $('Parse Telegram Message').first().json.chat_id;\nlet message = \"\";\n\nif (data.error) {\n  message =\n`⚠️ Service Temporarily Unavailable\n\nI could not reach the backend right now.\nPlease check whether the backend service is running.`;\n} else if (data.status === \"DELETED\") {\n  message =\n`🗑️ Product Removed\n\n${data.message || \"The product record was successfully deleted.\"}`;\n} else if (data.status === \"NOT_FOUND\") {\n  message =\n`❌ Product Not Found\n\n${data.message || \"No product matched the provided identifier. Nothing was deleted.\"}`;\n} else if (data.status === \"INVALID_QUERY\") {\n  message =\n`⚠️ Invalid Identifier\n\n${data.message || \"Please provide a valid barcode, SKU, or product name.\"}`;\n} else {\n  message =\n`⚠️ Removal Failed\n\nStatus: ${data.status || \"Unknown\"}\nMessage: ${data.message || \"Unexpected response from backend.\"}`;\n}\n\nreturn [\n  {\n    json: {\n      chat_id: chatId,\n      message\n    }\n  }\n];"
+      },
+      "id": "0f3889bd-2ae1-4219-96d3-c0f0be536d98",
+      "name": "Format Remove Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2048,
+        1600
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "0fee0272-8fad-464c-b3a2-79d8269ba2ff",
+      "name": "Send Remove Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2304,
+        1600
+      ],
+      "webhookId": "68a91479-1965-4199-be8c-be378e3dbad7",
+      "credentials": {
+        "telegramApi": {
+          "id": "AWBMRTxDOje1YqSC",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.argument }}",
+              "operator": {
+                "operation": "equals",
+                "type": "string"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "id": "8884c117-b22c-4d31-a87c-b379f9739cc9",
+      "name": "Check Edit Argument",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        944,
+        1952
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "⚠️ Please provide a product identifier and at least one field to update.\n\nFormat:\n/edit <identifier> <field>=<value>\n\nExamples:\n/edit 8901262010011 price=45\n/edit AMUL-TAAZA-500ML category=Dairy\n\nEditable fields: name, brand, category, sku, barcode, price, ingredients, storage_instruction, description\n\nNote: values cannot contain spaces.",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "61cc27b0-7d6c-4f34-8cb0-335158b5c754",
+      "name": "Send Edit Usage Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1552,
+        1808
+      ],
+      "webhookId": "b0be8a1c-5986-4bfb-967d-dbff694943f7",
+      "credentials": {
+        "telegramApi": {
+          "id": "AWBMRTxDOje1YqSC",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = ($json.argument || \"\").trim();\nconst tokens = raw.split(/\\s+/).filter(Boolean);\nconst identifier = tokens[0] || \"\";\nconst fieldTokens = tokens.slice(1);\n\nconst updates = {};\nconst invalidTokens = [];\n\nfor (const t of fieldTokens) {\n  const eqIndex = t.indexOf(\"=\");\n  if (eqIndex > 0) {\n    const key = t.substring(0, eqIndex).trim();\n    const value = t.substring(eqIndex + 1).trim();\n    if (key) {\n      updates[key] = value;\n    }\n  } else {\n    invalidTokens.push(t);\n  }\n}\n\nreturn [\n  {\n    json: {\n      ...$json,\n      identifier,\n      updates,\n      updateCount: Object.keys(updates).length,\n      invalidTokens\n    }\n  }\n];"
+      },
+      "id": "40d324f7-2ed5-4fb4-bb14-8b0e37fe98e0",
+      "name": "Parse Edit Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        1952
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.identifier }}",
+              "operator": {
+                "operation": "equals",
+                "type": "string"
+              },
+              "rightValue": ""
+            },
+            {
+              "leftValue": "={{ $json.updateCount }}",
+              "operator": {
+                "operation": "equals",
+                "type": "number"
+              },
+              "rightValue": 0
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        },
+        "options": {}
+      },
+      "id": "824b007e-da1f-407d-8bdf-2e0fb16d7d63",
+      "name": "Check Edit Fields Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1536,
+        1952
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "⚠️ No valid updates were provided.\n\nFormat:\n/edit <identifier> <field>=<value>\n\nExample:\n/edit 8901262010011 price=45\n\nMake sure to include a product identifier and at least one field=value pair (no spaces around '=').",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "ded62b9e-e5f2-484f-9adf-deb0470f7101",
+      "name": "Send Edit Format Usage Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1792,
+        1808
+      ],
+      "webhookId": "eb5424c5-f0a0-4dc8-8166-3ddb07f9293d",
+      "credentials": {
+        "telegramApi": {
+          "id": "AWBMRTxDOje1YqSC",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $json.backend_base_url }}/api/v1/products/update",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "ngrok-skip-browser-warning",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { identifier: $json.identifier, updates: $json.updates, request_source: \"TELEGRAM\", requested_by: $json.username, telegram_chat_id: String($json.chat_id), telegram_user_id: String($json.user_id), n8n_execution_id: $execution.id } }}",
+        "options": {
+          "response": {},
+          "timeout": 15000
+        }
+      },
+      "id": "9b07d7a9-e7a1-4eb8-885c-47f00e83c520",
+      "name": "Edit Product Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1792,
+        1952
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst chatId = $('Parse Telegram Message').first().json.chat_id;\nlet message = \"\";\n\nfunction fieldsToText(fields) {\n  if (!fields || typeof fields !== \"object\") return \"Not available\";\n  const entries = Object.entries(fields);\n  if (entries.length === 0) return \"Not available\";\n  return entries.map(([k, v]) => `${k}: ${v}`).join(\"\\n\");\n}\n\nif (data.error) {\n  message =\n`⚠️ Service Temporarily Unavailable\n\nI could not reach the backend right now.\nPlease check whether the backend service is running.`;\n} else if (data.status === \"UPDATED\") {\n  message =\n`✅ Product Updated\n\n${data.message || \"The product record was successfully updated.\"}\n\nUpdated fields:\n${fieldsToText(data.updated_fields || $('Parse Edit Command').first().json.updates)}`;\n} else if (data.status === \"NOT_FOUND\") {\n  message =\n`❌ Product Not Found\n\n${data.message || \"No product matched the provided identifier. Nothing was updated.\"}`;\n} else if (data.status === \"INVALID_FIELD\") {\n  message =\n`⚠️ Invalid Field\n\n${data.message || \"One or more fields provided are not editable.\"}`;\n} else if (data.status === \"INVALID_QUERY\") {\n  message =\n`⚠️ Invalid Request\n\n${data.message || \"Please provide a valid identifier and field updates.\"}`;\n} else {\n  message =\n`⚠️ Update Failed\n\nStatus: ${data.status || \"Unknown\"}\nMessage: ${data.message || \"Unexpected response from backend.\"}`;\n}\n\nreturn [\n  {\n    json: {\n      chat_id: chatId,\n      message\n    }\n  }\n];"
+      },
+      "id": "779d356c-0a67-49d3-96e1-f28603f91309",
+      "name": "Format Edit Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2048,
+        1952
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "2e593b98-067f-42a8-942f-40322bc7b7f9",
+      "name": "Send Edit Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2304,
+        1952
+      ],
+      "webhookId": "8f10ba0b-787b-4ed3-baed-94b6249775f7",
+      "credentials": {
+        "telegramApi": {
+          "id": "AWBMRTxDOje1YqSC",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Product Info Agent": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Fallback Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Product Info Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversation Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Product Info Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Open Food Facts By Barcode": {
+      "ai_tool": [
+        [
+          {
+            "node": "Product Info Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Open Food Facts By Name": {
+      "ai_tool": [
+        [
+          {
+            "node": "Product Info Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Parse Telegram Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Telegram Message": {
+      "main": [
+        [
+          {
+            "node": "Route Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Command": {
+      "main": [
+        [
+          {
+            "node": "Send Start Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Help Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Product Argument",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Ask Argument",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Category Argument",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Remove Argument",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Edit Argument",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Product Info Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Unknown Command Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Product Argument": {
+      "main": [
+        [
+          {
+            "node": "Send Product Usage Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Product Search Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Product Search Request": {
+      "main": [
+        [
+          {
+            "node": "Format Product Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Product Response": {
+      "main": [
+        [
+          {
+            "node": "Send Product Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Ask Argument": {
+      "main": [
+        [
+          {
+            "node": "Send Ask Usage Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ask Backend Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask Backend Request": {
+      "main": [
+        [
+          {
+            "node": "Format Ask Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Ask Response": {
+      "main": [
+        [
+          {
+            "node": "Send Ask Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Category Argument": {
+      "main": [
+        [
+          {
+            "node": "Send Category Usage Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Category Search Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Category Search Request": {
+      "main": [
+        [
+          {
+            "node": "Format Category Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Category Response": {
+      "main": [
+        [
+          {
+            "node": "Send Category Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Remove Argument": {
+      "main": [
+        [
+          {
+            "node": "Send Remove Usage Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Parse Remove Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Remove Command": {
+      "main": [
+        [
+          {
+            "node": "Check Remove Confirmed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Remove Confirmed": {
+      "main": [
+        [
+          {
+            "node": "Send Remove Confirmation Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Remove Product Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove Product Request": {
+      "main": [
+        [
+          {
+            "node": "Format Remove Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Remove Response": {
+      "main": [
+        [
+          {
+            "node": "Send Remove Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Edit Argument": {
+      "main": [
+        [
+          {
+            "node": "Send Edit Usage Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Parse Edit Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Edit Command": {
+      "main": [
+        [
+          {
+            "node": "Check Edit Fields Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Edit Fields Valid": {
+      "main": [
+        [
+          {
+            "node": "Send Edit Format Usage Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Edit Product Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Product Request": {
+      "main": [
+        [
+          {
+            "node": "Format Edit Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Edit Response": {
+      "main": [
+        [
+          {
+            "node": "Send Edit Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": true,
+    "saveDataErrorExecution": "all",
+    "executionTimeout": 120,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "4c7bab0c-3380-4891-8afa-d914311676eb",
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "templateCredsSetupCompleted": true,
+    "instanceId": "15db81787c2115de869c84a077f433a8ffd3005f8029ce5fadf12e3ddabe7894"
+  },
+  "nodeGroups": [],
+  "id": "BL6PQbJjlZJwwcFP",
+  "tags": []
+}
